@@ -13,7 +13,7 @@ A mobile food & health tracker built with React Native (Expo SDK 55), featuring 
 
 ## Tech Stack
 
-- **Framework**: Expo SDK 55 (React Native)
+- **Framework**: Expo SDK 54 (React Native)
 - **Language**: TypeScript (strict mode)
 - **State**: Zustand
 - **Navigation**: Expo Router v3
@@ -102,28 +102,6 @@ Run this SQL in your Supabase SQL Editor:
 -- See docs/schema.sql for complete schema
 \`\`\`
 
-## Project Structure
-
-\`\`\`
-nutrisnap/
-├── app/                    # Expo Router pages
-│   ├── (tabs)/            # Tab navigation screens
-│   │   ├── camera.tsx     # Main food scanning screen
-│   │   ├── plan.tsx       # Archetype plan & habits
-│   │   ├── profile.tsx    # User stats & settings
-│   │   ├── foodmap.tsx    # Food discovery grid
-│   │   └── social.tsx     # Coming soon
-│   ├── auth/              # Authentication screens
-│   ├── onboarding/        # 9-step onboarding flow
-│   └── confirm.tsx        # Food entry confirmation
-├── components/
-│   └── ui/                # Reusable UI components
-├── constants/             # Theme, archetypes, nutrients
-├── hooks/                 # Custom React hooks
-├── lib/                   # API clients (Supabase, Gemini)
-├── stores/                # Zustand state stores
-└── types/                 # TypeScript definitions
-\`\`\`
 
 ## Scripts
 
@@ -136,28 +114,6 @@ npm run lint       # Run ESLint
 npm run typecheck  # Run TypeScript check
 \`\`\`
 
-## Design System
-
-### Colors (Light)
-- Background: \`#F5F0E8\`
-- Card: \`#EDE6D6\`  
-- Primary (Olive): \`#5D7A3E\`
-- Accent (Orange): \`#E8703A\`
-- Warning (Yellow): \`#E8C13A\`
-
-### Typography
-- Headings: Nunito 800 ExtraBold
-- Body: Inter 400-600
-
-### Spacing Scale
-4, 8, 12, 16, 20, 24, 32, 40, 48, 64
-
-## Contributing
-
-1. Create a feature branch
-2. Make your changes
-3. Run \`npm run lint && npm run typecheck\`
-4. Submit a PR
 
 ## License
 
