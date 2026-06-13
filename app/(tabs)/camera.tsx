@@ -100,7 +100,7 @@ export default function CameraScreen() {
       if (photo?.base64) {
         const ext = photo.uri?.split('.').pop()?.toLowerCase();
         const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
-        await analyze({ base64: photo.base64, mimeType });
+        await analyze({ base64: photo.base64, mimeType }, photo.uri!);
       }
     } catch (e) {
       console.error('Capture error:', e);
@@ -120,7 +120,7 @@ export default function CameraScreen() {
         const uri = pickerResult.assets[0].uri;
         const ext = uri?.split('.').pop()?.toLowerCase();
         const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
-        await analyze({ base64: pickerResult.assets[0].base64, mimeType });
+        await analyze({ base64: pickerResult.assets[0].base64, mimeType }, uri);
       }
     } catch (e) {
       console.error('Gallery pick error:', e);

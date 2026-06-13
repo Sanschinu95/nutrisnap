@@ -1,12 +1,12 @@
 -- NutriSnap Database Schema
--- Run this in your Supabase SQL Editor
+-- Run this in your Neon SQL Editor (https://neon.tech)
 
 -- Enable UUID extension
 create extension if not exists "uuid-ossp";
 
 -- Profiles table
 create table if not exists public.profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
+  id uuid primary key default uuid_generate_v4(),
   name text,
   age integer,
   weight_kg decimal(5,2),

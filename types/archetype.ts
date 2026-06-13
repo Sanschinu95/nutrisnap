@@ -10,7 +10,7 @@ export type ArchetypeKey =
   | 'tigress' 
   | 'phoenix' 
   | 'doe' 
-  | 'lioness';
+  | 'swan';
 
 export type ArchetypeTier = 'base' | 'silver' | 'gold' | 'platinum';
 

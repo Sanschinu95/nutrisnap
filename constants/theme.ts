@@ -39,7 +39,7 @@ export const ArchetypeColors = {
   tigress: { primary: '#6B1414', accent: '#FF6B6B', bg: '#1A0A0A' },
   phoenix: { primary: '#8B2500', accent: '#FFD700', bg: '#1A0D00' },
   doe: { primary: '#2E5E2E', accent: '#98FB98', bg: '#0D1A0D' },
-  lioness: { primary: '#7A5C00', accent: '#FFE566', bg: '#1A1200' },
+  swan: { primary: '#1B6B5A', accent: '#A0E8D5', bg: '#0D1A17' },
 } as const;
 
 export const Shadows = {

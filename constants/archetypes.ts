@@ -5,7 +5,8 @@
 
 import { ArchetypeColors } from './theme';
 
-export type ArchetypeKey = 'wolf' | 'bear' | 'lion' | 'deer' | 'tigress' | 'phoenix' | 'doe' | 'lioness';
+export type ArchetypeKey = 'wolf' | 'bear' | 'lion' | 'deer' | 'tigress' | 'phoenix' | 'doe' | 'swan';
+export const FEMALE_ARCHETYPES: ArchetypeKey[] = ['tigress', 'phoenix', 'doe', 'swan'];
 export type BiologicalSex = 'male' | 'female' | 'prefer_not_to_say';
 
 // Macro splits per archetype (protein, carbs, fat as percentage of total calories)
@@ -17,7 +18,7 @@ export const ARCHETYPE_MACROS = {
   tigress: { protein: 0.42, carbs: 0.33, fat: 0.25 },
   phoenix: { protein: 0.35, carbs: 0.40, fat: 0.25 },
   doe: { protein: 0.28, carbs: 0.52, fat: 0.20 },
-  lioness: { protein: 0.38, carbs: 0.37, fat: 0.25 },
+  swan: { protein: 0.38, carbs: 0.37, fat: 0.25 },
 } as const;
 
 export interface Archetype {
@@ -168,14 +169,14 @@ export const ARCHETYPES: Record<ArchetypeKey, Archetype> = {
     streakNotification: 'Stay graceful, stay consistent. Log your meal. 🦌',
     forSex: ['female'],
   },
-  lioness: {
-    key: 'lioness',
-    name: 'Lioness',
-    emoji: '🦁',
-    description: 'Queen of discipline',
-    longDescription: 'The Lioness archetype combines strength and grace with balanced macros. Lead your pride with unwavering discipline and nutritional excellence.',
-    macros: ARCHETYPE_MACROS.lioness,
-    colors: ArchetypeColors.lioness,
+  swan: {
+    key: 'swan',
+    name: 'Swan',
+    emoji: '🦢',
+    description: 'Elegant & disciplined',
+    longDescription: 'The Swan archetype embodies elegance and discipline with balanced macros. Glide through your transformation with poise, grace, and unwavering consistency.',
+    macros: ARCHETYPE_MACROS.swan,
+    colors: ArchetypeColors.swan,
     defaultHabits: [
       'Morning movement',
       'High protein breakfast',
@@ -183,7 +184,7 @@ export const ARCHETYPES: Record<ArchetypeKey, Archetype> = {
       'Weekly meal plan',
       'Evening reflection',
     ],
-    streakNotification: 'Queens don\'t break streaks. Log and maintain your reign. 👑',
+    streakNotification: 'Swans never lose their grace. Log and stay elegant. 🦢',
     forSex: ['female'],
   },
 };

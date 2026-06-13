@@ -3,7 +3,7 @@
  */
 
 import React from 'react';
-import { Text, TextStyle, StyleSheet, StyleProp } from 'react-native';
+import { Text, TextStyle, StyleProp, type TextProps } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { Typography } from '@/constants/theme';
 
@@ -18,13 +18,12 @@ type TextVariant =
   | 'labelSmall'
   | 'button';
 
-interface ThemedTextProps {
+interface ThemedTextProps extends Omit<TextProps, 'style'> {
   variant?: TextVariant;
   color?: string;
   align?: TextStyle['textAlign'];
   style?: StyleProp<TextStyle>;
   children: React.ReactNode;
-  numberOfLines?: number;
 }
 
 export function ThemedText({
@@ -33,7 +32,7 @@ export function ThemedText({
   align,
   style,
   children,
-  numberOfLines,
+  ...textProps
 }: ThemedTextProps) {
   const { theme } = useTheme();
 
@@ -93,11 +92,9 @@ export function ThemedText({
         align ? { textAlign: align } : undefined,
         style,
       ]}
-      numberOfLines={numberOfLines}
+      {...textProps}
     >
       {children}
     </Text>
   );
 }
-
-const styles = StyleSheet.create({});

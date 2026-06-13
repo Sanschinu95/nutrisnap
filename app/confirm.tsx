@@ -28,12 +28,43 @@ import { useDailyStore } from '@/stores/daily.store';
 import { useUserStore } from '@/stores/user.store';
 import { Spacing, Colors, BorderRadius } from '@/constants/theme';
 import type { NutritionEntry, FoodItem, UserCorrection } from '@/types/nutrition';
+import type { ArchetypeKey } from '@/constants/archetypes';
+
+const SCAN_FEEDBACK: Record<ArchetypeKey, string[]> = {
+  wolf: ['Strong fuel for the hunt.', 'Keep the protein sharp.'],
+  bear: ['Steady energy for strength.', 'Balanced fuel builds power.'],
+  lion: ['A disciplined choice.', 'Lead the day with control.'],
+  deer: ['Light, sustainable momentum.', 'Simple fuel can carry you far.'],
+  tigress: ['Excellent fuel for strength.', 'Stay fierce and fed.'],
+  phoenix: ['High energy meal.', 'Keep rising.'],
+  doe: ['Simple and sustainable.', 'Gentle progress still counts.'],
+  swan: ['Balanced nutrition choice.', 'Elegance is consistency.'],
+};
+
+function getScanFeedback(archetype: ArchetypeKey | null, data: NutritionEntry): string {
+  if (!archetype) return "Today's choices build tomorrow's results.";
+
+  const proteinRatio = data.total_calories > 0
+    ? (data.total_protein_g * 4) / data.total_calories
+    : 0;
+  const base = SCAN_FEEDBACK[archetype][0];
+
+  if (proteinRatio < 0.22) {
+    return `${base} Add 15g more protein for stronger recovery.`;
+  }
+
+  if (data.total_calories >= 650) {
+    return `${base} Strong energy for the next stretch.`;
+  }
+
+  return `${base} ${SCAN_FEEDBACK[archetype][1]}`;
+}
 
 export default function ConfirmScreen() {
   const { theme } = useTheme();
   const params = useLocalSearchParams<{ data: string }>();
   const { addEntry, summary } = useDailyStore();
-  const { calorieGoal, macroGoals, updateStreak } = useUserStore();
+  const { calorieGoal, macroGoals, updateStreak, archetype } = useUserStore();
 
   const [nutritionData, setNutritionData] = useState<NutritionEntry | null>(null);
   const [originalData, setOriginalData] = useState<NutritionEntry | null>(null);
@@ -164,11 +195,12 @@ export default function ConfirmScreen() {
         carbs_g: nutritionData.total_carbs_g,
         fat_g: nutritionData.total_fat_g,
         fiber_g: nutritionData.food_items.reduce((sum, item) => sum + item.fiber_g, 0),
-        image_url: null,
+        image_url: (nutritionData as any).image_url || null,
         raw_gemini_response: originalData,
         user_corrections: wasEdited ? corrections : null,
         user_accepted_without_edit: !wasEdited,
         is_cheat_day: isCheatDay,
+        logged_at: new Date().toISOString(),
       });
       
       if (result.success) {
@@ -219,6 +251,18 @@ export default function ConfirmScreen() {
             placeholder="Meal name"
             placeholderTextColor={theme.textMuted}
           />
+
+          <View style={[styles.feedbackCard, { backgroundColor: theme.card }]}>
+            <View style={[styles.feedbackIcon, { backgroundColor: Colors.orangeLight + '40' }]}>
+              <Ionicons name="sparkles-outline" size={20} color={Colors.orange} />
+            </View>
+            <View style={styles.feedbackText}>
+              <ThemedText variant="label" color={theme.textMuted}>ARCHETYPE FEEDBACK</ThemedText>
+              <ThemedText variant="bodyMedium">
+                {getScanFeedback(archetype, nutritionData)}
+              </ThemedText>
+            </View>
+          </View>
 
           {/* Food items */}
           <View style={styles.itemsContainer}>
@@ -394,7 +438,7 @@ export default function ConfirmScreen() {
         {/* Bottom actions */}
         <View style={[styles.bottomActions, { backgroundColor: theme.background }]}>
           <Button
-            title="Add to Log"
+            title="Fuel Your Journey"
             onPress={handleSave}
             loading={isSaving}
             variant="primary"
@@ -443,6 +487,25 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontFamily: 'Nunito_800ExtraBold',
     marginBottom: Spacing.xl,
+  },
+  feedbackCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.base,
+    borderRadius: BorderRadius.md,
+    gap: Spacing.md,
+    marginBottom: Spacing.xl,
+  },
+  feedbackIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  feedbackText: {
+    flex: 1,
+    gap: 2,
   },
   itemsContainer: {
     gap: Spacing.md,

@@ -1,5 +1,6 @@
 /**
  * Tab layout - Bottom navigation
+ * Home is the default tab (first in order)
  */
 
 import { Tabs } from 'expo-router';
@@ -19,35 +20,35 @@ interface TabConfig {
 
 const TAB_CONFIG: TabConfig[] = [
   {
+    name: 'home',
+    title: 'Home',
+    iconActive: 'home',
+    iconInactive: 'home-outline',
+  },
+  {
     name: 'camera',
-    title: 'Camera',
-    iconActive: 'camera',
-    iconInactive: 'camera-outline',
-    iconSize: 28, // Larger for primary action
+    title: 'Scan',
+    iconActive: 'scan-circle',
+    iconInactive: 'scan-circle-outline',
+    iconSize: 28,
   },
   {
     name: 'plan',
-    title: 'Plan',
-    iconActive: 'calendar',
-    iconInactive: 'calendar-outline',
+    title: 'Progress',
+    iconActive: 'stats-chart',
+    iconInactive: 'stats-chart-outline',
+  },
+  {
+    name: 'foodmap',
+    title: 'Nutridex',
+    iconActive: 'nutrition',
+    iconInactive: 'nutrition-outline',
   },
   {
     name: 'profile',
     title: 'Profile',
     iconActive: 'person-circle',
     iconInactive: 'person-circle-outline',
-  },
-  {
-    name: 'foodmap',
-    title: 'FoodMap',
-    iconActive: 'map',
-    iconInactive: 'map-outline',
-  },
-  {
-    name: 'social',
-    title: 'Social',
-    iconActive: 'people',
-    iconInactive: 'people-outline',
   },
 ];
 

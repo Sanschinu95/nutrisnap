@@ -1,13 +1,21 @@
 /**
- * User profile store using Zustand
- * MOCK version — no Supabase, uses in-memory data for local testing
+ * User profile store using Zustand + Supabase
+ * Loads/saves profile from Supabase, falls back to in-memory
  */
 
 import { create } from 'zustand';
+import { supabase } from '@/lib/supabase';
 import { calculateNutritionGoals } from '@/lib/tdee';
 import type { Profile } from '@/types/database';
 import type { ArchetypeKey, BiologicalSex, GoalType } from '@/types/archetype';
 import type { MacroGoals } from '@/types/nutrition';
+import type { ArchetypeLevel } from '@/constants/archetypeProgress';
+import {
+  getLevelForProgress,
+  MAX_PROGRESS,
+  GOAL_MET_PROGRESS,
+  GOAL_MISSED_PROGRESS,
+} from '@/constants/archetypeProgress';
 
 interface OnboardingData {
   name: string;
@@ -27,7 +35,10 @@ interface UserState {
   calorieGoal: number;
   macroGoals: MacroGoals;
   streak: number;
+  archetypeProgress: number;
+  archetypeLevel: ArchetypeLevel;
   isLoading: boolean;
+  isGuest: boolean;
   error: string | null;
 }
 
@@ -36,74 +47,102 @@ interface UserActions {
   updateProfile: (updates: Partial<Profile>) => Promise<void>;
   completeOnboarding: (data: OnboardingData) => Promise<{ success: boolean; error?: string }>;
   updateStreak: () => Promise<void>;
+  updateArchetypeProgress: (goalMet: boolean) => Promise<void>;
   clearError: () => void;
+  reset: () => void;
 }
 
 type UserStore = UserState & UserActions;
 
-// ── Pre-baked mock profile so the UI has data on first launch ──
-const MOCK_PROFILE: Profile = {
-  id: 'local-mock-user-0001',
-  name: 'NutriSnap Tester',
-  age: 24,
-  weight_kg: 75,
-  height_cm: 175,
-  goal_weight_kg: 70,
-  goal_type: 'cut',
-  biological_sex: 'male',
-  calorie_goal: 2100,
-  protein_goal: 160,
-  carb_goal: 220,
-  fat_goal: 65,
-  archetype: 'wolf',
-  archetype_tier: 'base',
-  streak_count: 3,
-  longest_streak: 7,
-  last_logged_date: new Date().toISOString().split('T')[0],
-  onboarding_complete: true,
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
-};
+const DEFAULT_CALORIES = 2000;
+const DEFAULT_MACROS: MacroGoals = { protein: 150, carbs: 200, fat: 67 };
+
+function extractGoals(profile: Profile) {
+  const progress = profile.archetype_progress ?? 0;
+  return {
+    archetype: profile.archetype ?? null,
+    calorieGoal: profile.calorie_goal ?? DEFAULT_CALORIES,
+    macroGoals: {
+      protein: profile.protein_goal ?? DEFAULT_MACROS.protein,
+      carbs: profile.carb_goal ?? DEFAULT_MACROS.carbs,
+      fat: profile.fat_goal ?? DEFAULT_MACROS.fat,
+    },
+    streak: profile.streak_count ?? 0,
+    archetypeProgress: progress,
+    archetypeLevel: getLevelForProgress(progress).key,
+  };
+}
 
 export const useUserStore = create<UserStore>((set, get) => ({
-  // State — start with the mock profile already loaded
-  profile: MOCK_PROFILE,
-  archetype: MOCK_PROFILE.archetype,
-  calorieGoal: MOCK_PROFILE.calorie_goal ?? 2000,
-  macroGoals: {
-    protein: MOCK_PROFILE.protein_goal ?? 150,
-    carbs: MOCK_PROFILE.carb_goal ?? 200,
-    fat: MOCK_PROFILE.fat_goal ?? 67,
-  },
-  streak: MOCK_PROFILE.streak_count,
+  profile: null,
+  archetype: null,
+  calorieGoal: DEFAULT_CALORIES,
+  macroGoals: DEFAULT_MACROS,
+  streak: 0,
+  archetypeProgress: 0,
+  archetypeLevel: 'pup' as ArchetypeLevel,
   isLoading: false,
+  isGuest: false,
   error: null,
 
-  // Actions — all in-memory, no network calls
-
   loadProfile: async () => {
-    // Already loaded — just make sure flag is correct
-    const { profile } = get();
-    if (!profile) {
-      set({ profile: MOCK_PROFILE, archetype: MOCK_PROFILE.archetype, isLoading: false });
+    try {
+      set({ isLoading: true });
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        set({ isLoading: false, profile: null });
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error || !data) {
+        // No profile yet (new user)
+        set({ isLoading: false, profile: null });
+        return;
+      }
+
+      const profile = data as Profile;
+      set({
+        profile,
+        ...extractGoals(profile),
+        isLoading: false,
+      });
+    } catch (error) {
+      console.error('Load profile error:', error);
+      set({ isLoading: false });
     }
   },
 
   updateProfile: async (updates: Partial<Profile>) => {
     const { profile } = get();
     if (!profile) return;
-    const updated = { ...profile, ...updates, updated_at: new Date().toISOString() };
-    set({
-      profile: updated,
-      archetype: updated.archetype ?? get().archetype,
-      calorieGoal: updated.calorie_goal ?? get().calorieGoal,
-      macroGoals: {
-        protein: updated.protein_goal ?? get().macroGoals.protein,
-        carbs: updated.carb_goal ?? get().macroGoals.carbs,
-        fat: updated.fat_goal ?? get().macroGoals.fat,
-      },
-      streak: updated.streak_count ?? 0,
-    });
+
+    try {
+      // Optimistic in-memory update
+      const updated = { ...profile, ...updates, updated_at: new Date().toISOString() };
+      set({
+        profile: updated,
+        ...extractGoals(updated),
+      });
+
+      // Persist to Supabase
+      const { error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', profile.id);
+
+      if (error) {
+        console.warn('Profile update failed:', error.message);
+      }
+    } catch (error) {
+      console.warn('Profile update error:', error);
+    }
   },
 
   completeOnboarding: async (data: OnboardingData) => {
@@ -120,8 +159,26 @@ export const useUserStore = create<UserStore>((set, get) => ({
         data.activity_level,
       );
 
-      const newProfile: Profile = {
-        id: 'local-mock-user-0001',
+      // Check if user is authenticated
+      let userId: string;
+      let isGuest = false;
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          userId = user.id;
+        } else {
+          // Guest mode — save locally only
+          userId = `guest_${Date.now()}`;
+          isGuest = true;
+        }
+      } catch {
+        // Auth check failed — proceed as guest
+        userId = `guest_${Date.now()}`;
+        isGuest = true;
+      }
+
+      const profileData = {
+        id: userId,
         name: data.name,
         age: data.age,
         biological_sex: data.biological_sex,
@@ -130,7 +187,9 @@ export const useUserStore = create<UserStore>((set, get) => ({
         goal_weight_kg: data.goal_weight_kg ?? null,
         goal_type: data.goal_type,
         archetype: data.archetype,
-        archetype_tier: 'base',
+        archetype_tier: 'base' as const,
+        archetype_progress: 0,
+        archetype_level: 'pup',
         calorie_goal: goals.calorieGoal,
         protein_goal: goals.proteinGoal,
         carb_goal: goals.carbGoal,
@@ -143,13 +202,24 @@ export const useUserStore = create<UserStore>((set, get) => ({
         updated_at: new Date().toISOString(),
       };
 
+      // Only persist to Supabase if authenticated
+      if (!isGuest) {
+        const { error } = await supabase
+          .from('profiles')
+          .upsert(profileData, { onConflict: 'id' });
+
+        if (error) {
+          console.warn('Supabase upsert error:', error.message);
+          // Fall through -- save locally even if Supabase fails
+        }
+      }
+
+      const profile = profileData as Profile;
       set({
-        profile: newProfile,
-        archetype: data.archetype,
-        calorieGoal: goals.calorieGoal,
-        macroGoals: { protein: goals.proteinGoal, carbs: goals.carbGoal, fat: goals.fatGoal },
-        streak: 0,
+        profile,
+        ...extractGoals(profile),
         isLoading: false,
+        isGuest,
       });
 
       return { success: true };
@@ -178,16 +248,72 @@ export const useUserStore = create<UserStore>((set, get) => ({
     newStreak = lastLogged === yesterdayStr ? newStreak + 1 : 1;
     const longestStreak = Math.max(newStreak, profile.longest_streak);
 
+    const updates = {
+      streak_count: newStreak,
+      longest_streak: longestStreak,
+      last_logged_date: today,
+    };
+
     set({
       streak: newStreak,
-      profile: {
-        ...profile,
-        streak_count: newStreak,
-        longest_streak: longestStreak,
-        last_logged_date: today,
-      },
+      profile: { ...profile, ...updates },
     });
+
+    // Persist to Supabase
+    try {
+      await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', profile.id);
+    } catch (error) {
+      console.warn('Streak update failed:', error);
+    }
+  },
+
+  updateArchetypeProgress: async (goalMet: boolean) => {
+    const { profile } = get();
+    if (!profile) return;
+
+    const increment = goalMet ? GOAL_MET_PROGRESS : GOAL_MISSED_PROGRESS;
+    const newProgress = Math.min(
+      (profile.archetype_progress ?? 0) + increment,
+      MAX_PROGRESS
+    );
+    const newLevel = getLevelForProgress(newProgress);
+
+    const updates = {
+      archetype_progress: newProgress,
+      archetype_level: newLevel.key,
+    };
+
+    set({
+      archetypeProgress: newProgress,
+      archetypeLevel: newLevel.key,
+      profile: { ...profile, ...updates },
+    });
+
+    try {
+      await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', profile.id);
+    } catch (error) {
+      console.warn('Archetype progress update failed:', error);
+    }
   },
 
   clearError: () => set({ error: null }),
+
+  reset: () => set({
+    profile: null,
+    archetype: null,
+    calorieGoal: DEFAULT_CALORIES,
+    macroGoals: DEFAULT_MACROS,
+    streak: 0,
+    archetypeProgress: 0,
+    archetypeLevel: 'pup' as ArchetypeLevel,
+    isLoading: false,
+    isGuest: false,
+    error: null,
+  }),
 }));

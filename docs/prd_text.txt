@@ -1,0 +1,898 @@
+ 
+  
+NutriSnap 
+Product Requirements Document & Design Specification 
+ 
+Version  1.0 — MVP + v1.5 
+Platform  iOS + Android (Expo Managed) 
+Stack  React Native · Supabase · Gemini 1.5 
+Flash 
+Target  Fitness enthusiasts · Weight loss · 
+General health 
+Timeline  MVP: 6 weeks · v1.5: Month 3–5 
+ 
+For Copilot Agent Build 
+ 
+ 
+Table of Contents 
+1.  Executive Summary 
+2.  Problem & Opportunity 
+3.  Target Users & Personas 
+4.  Feature Specification (MVP) 
+5.  Feature Specification (v1.5 — Archetype System) 
+6.  Screen-by-Screen UX Specification 
+7.  Design System 
+8.  Technical Architecture 
+9.  Gemini AI Integration Spec 
+10.  Database Schema 
+11.  Notification System 
+12.  Monetization 
+13.  Success Metrics 
+ 
+ 
+1. Executive Summary 
+🎯  The One-Line Pitch 
+NutriSnap is a warm, identity-driven food and health tracker that uses AI camera scanning to 
+make nutrition effortless — built for people who want to transform, not just count calories. 
+ 
+NutriSnap enters a market dominated by cold, clinical apps (MyFitnessPal, Cronometer) and a single iOS-
+only camera app (Nutrify). Our differentiation is threefold: camera-first AI nutrition on both Android and iOS 
+from day one, a warm and friendly design language that feels like a supportive friend, and a unique 
+Archetype Transformation System that gives users an identity to grow into — not just a number to hit. 
+ 
+The app is built as a Freemium product, collecting labeled food data with every scan that will eventually train 
+a proprietary VLM (Qwen2.5-VL 7B), replacing the Gemini API dependency and creating a lasting 
+competitive moat. 
+ 
+2. Problem & Opportunity 
+The Problems We're Solving 
+What's Broken Today 
+• Existing apps are clinical and demotivating 
+— users feel judged, not supported 
+• Manual food logging is tedious — nobody 
+wants to type 'grilled chicken 150g' after 
+every meal 
+• Static calorie goals ignore daily activity — 
+walking 15k steps but eating 1800 calories 
+causes muscle loss 
+• No app celebrates cheat days — users feel 
+guilt and abandon the app 
+• Nutrify only exists on iOS — 72% of the 
+global smartphone market runs Android 
+• No transformation identity — users track but 
+don't feel like they're becoming someone 
+Our Solutions 
+• Warm, emoji-driven, earthy UI that feels like 
+a wellness journal 
+• Point camera → instant AI nutrition 
+breakdown in under 2 seconds 
+• Dynamic calorie goals updated in real-time 
+from pedometer step data 
+• Cheat Day Mode — celebration UI, confetti, 
+zero guilt language 
+• Android + iOS from Day 1 via Expo 
+managed workflow 
+• Archetype System — Wolf, Bear, Lion, 
+Deer, Tigress, Phoenix, Doe, Lioness 
+ 
+Market Opportunity 
+$13.8B 
+Global fitness app market 2024 
+23% 
+YoY growth in AI health apps 
+ 
+3. Target Users & Personas 
+🧑 Aryan, 24 
+Fitness Enthusiast · Delhi 
+• Goes to gym 4x/week, wants to track 
+macros seriously 
+• Tried MyFitnessPal — found it 
+overwhelming and ugly 
+• Wants to bulk up → Bear archetype 
+• Needs quick logging — no time for 
+manual entry 
+ 
+Goal: Hit 180g protein daily 
+👩 Priya, 29 
+Weight Loss Journey · Mumbai 
+• Wants to lose 12kg, tried 3 apps and 
+quit all of them 
+• Gets demotivated by red warnings and 
+calorie shaming 
+• Loves the idea of a Phoenix 
+transformation story 
+• Walks 8,000 steps daily but doesn't 
+account for it 
+ 
+Goal: Lose 1kg/week sustainably 
+ 
+4. Feature Specification — MVP 
+⚡  The Non-Negotiable Core Loop 
+Open app → Point camera at food → Get instant nutrition → See daily progress update → Feel 
+motivated to return tomorrow. Everything in MVP must serve this loop. 
+ 
+Feature 
+Priority 
+Phase 
+Notes 
+Camera Food Recognition 
+P1 
+MVP 
+Gemini 1.5 Flash, full-screen 
+camera, <2s response 
+Nutrition Confirmation Screen 
+P1 
+MVP 
+Edit AI output inline before 
+saving — trust bridge 
+Daily Calorie + Macro Tracking 
+P0 
+MVP 
+Calories, protein, carbs, fat, 
+fiber per day 
+TDEE Onboarding Calculator 
+P0 
+MVP 
+Age, weight, height, goal → 
+auto-calculate targets 
+Archetype Selection (Onboarding) 
+P0 
+MVP 
+Select archetype, store it — 
+logic ships in v1.5 
+Home / Daily Summary Screen 
+P0 
+MVP 
+Calorie ring, macro rings, food 
+log, streak badge 
+Cheat Day Mode 
+P1 
+MVP 
+Toggle + confetti animation, 
+guilt-free language 
+Habit Streak (Calories Only) 
+P1 
+MVP 
+Consecutive days hitting 
+calorie goal 
+Water Tracking 
+P1 
+MVP 
++250ml tap buttons, daily 
+water ring on home 
+Push Reminders 
+P1 
+MVP 
+Meal reminders + water 
+nudges via Expo Notifications 
+Weight Logging + Chart 
+P1 
+MVP 
+Daily weight input, Victory 
+Native line chart 
+Food History (30 days) 
+P1 
+MVP 
+Swipe to navigate past days 
+Nutridex (Basic) 
+P2 
+MVP 
+Show foods scanned, build 
+discovery over time 
+Dark Mode 
+P1 
+MVP 
+Full dark mode from launch — 
+earthy dark browns 
+Barcode Scanner 
+P2 
+v1.5 
+OpenFoodFacts API 
+integration 
+Steps → Dynamic Calories 
+P0 
+v1.5 
+expo-sensors pedometer → 
+live calorie goal update 
+Full Archetype System 
+P0 
+v1.5 
+Macro splits, UI themes, 
+microcopy per archetype 
+Archetype Progression Tiers 
+P1 
+v1.5 
+Pup→Wolf→Alpha Wolf etc. 
+based on consistency 
+Shareable Transformation Cards 
+P1 
+v1.5 
+Archetype card with streak + 
+progress to share 
+Social Challenges 
+P2 
+v2 
+Friends, archetype 
+leaderboards 
+Own VLM (Qwen 7B) 
+P0 
+v2 
+Replace Gemini after 50k 
+labeled images collected 
+ 
+5. Feature Specification — v1.5 Archetype System 
+The Archetype System is NutriSnap's identity engine. Users don't just track food — they become someone. 
+Each archetype is a complete transformation blueprint: custom macro targets, UI theme, microcopy tone, 
+reminder language, and progression tiers. 
+ 
+Male Archetypes 
+ 
+🐺  Wolf — Lean & Athletic 
+The lone hunter. Disciplined, fast, precise. Cuts fat while preserving muscle. 
+Macro Split 
+Protein: 40% 
+Carbs: 35% 
+Fat: 25% 
+Goal: Calorie deficit, lean muscle 
+Reminder Copy 
+"Wolves eat lean. Skip the extra rice." 
+"You haven't logged since 2pm. Hunters stay 
+fueled." 
+UI Accent: Deep navy + crimson glow 
+ 
+Progression Tiers 
+• 🐾 Wolf Pup — Week 1–4 (learning the 
+hunt) 
+• 🐺 Wolf — Month 2–3 (consistent tracker) 
+• ⚡ Alpha Wolf — Month 4+ (30-day streak 
+hit) 
+• 🌑 Shadow Wolf — Month 6+ (goal 
+achieved, maintain) 
+ 
+🐻  Bear — Bulk & Strength 
+The powerhouse. Eats big, lifts big, grows big. Calorie surplus king. 
+Macro Split 
+Protein: 35% 
+Carbs: 45% 
+Fat: 20% 
+Goal: Calorie surplus, max strength 
+Reminder Copy 
+"Bears fuel up. You're 400 calories under — eat." 
+"Big session tomorrow. Load up on carbs tonight." 
+UI Accent: Warm amber + deep brown 
+ 
+Progression Tiers 
+• 🐣 Bear Cub — Week 1–4 
+• 🐻 Bear — Month 2–3 
+• 💪 Grizzly — Month 4+ (surplus streak) 
+• 🏔️ Mountain Bear — Month 6+ 
+ 
+🦁  Lion — Balanced Power 
+The recomp king. Muscle gain with fat loss simultaneously. Precision eater. 
+Macro Split 
+Protein: 38% 
+Carbs: 37% 
+Fat: 25% 
+Goal: Body recomposition 
+Reminder Copy 
+"Lions are precise. Every gram matters today." 
+"The pride depends on you. Hit your protein." 
+UI Accent: Gold + deep savannah brown 
+ 
+🦌  Deer — Endurance & Flexibility 
+The long-distance runner. Light, agile, plant-forward. Built to go the distance. 
+Macro Split 
+Protein: 25% 
+Carbs: 55% 
+Fat: 20% 
+Goal: Endurance, low inflammation 
+Reminder Copy 
+"Grace in motion. Light meals, long distances." 
+"Deer are consistent. Show up today." 
+UI Accent: Forest green + morning mist 
+ 
+Female Archetypes 
+ 
+🐯  Tigress — Lean & Strong 
+Raw power meets elegance. Lean muscle, athletic performance, zero apologies. 
+Macro Split 
+Protein: 42% — highest of all archetypes 
+Carbs: 33% 
+Fat: 25% 
+Reminder Copy 
+"Tigresses don't skip meals. Fuel the fire." 
+UI Accent: Crimson + deep charcoal 
+ 
+🔥  Phoenix — Transformation Journey 
+Rising from the ashes. Weight loss with self-compassion at the center. 
+Macro Split 
+Protein: 35% 
+Carbs: 40% 
+Fat: 25% 
+Goal: Sustainable fat loss, self-love 
+Reminder Copy 
+"Every meal is a choice to rise. Make it count." 
+"You walked 9k steps today. You've earned real 
+food." 
+UI Accent: Sunset orange + warm gold 
+ 
+Special: Milestone Celebrations 
+• Every 5% body weight lost → animated Phoenix rising screen 
+• 30-day streak → 'You are rising' full-screen celebration 
+• Cheat day → 'Phoenixes feast too. You earned this 🔥' 
+ 
+🌿  Doe — Light & Flexible 
+Gentle strength. Plant-forward, mindful eating, long-term sustainability. 
+Macro Split 
+Protein: 28% 
+Carbs: 52% 
+Fat: 20% 
+Reminder Copy 
+"Gentle and consistent. That's your superpower." 
+UI Accent: Sage green + morning dew 
+ 
+👑  Lioness — Balanced Strength & Tone 
+She runs the pride. Muscle tone, balanced macros, commanding presence. 
+Macro Split 
+Protein: 38% 
+Carbs: 37% 
+Fat: 25% 
+Reminder Copy 
+"A queen eats with purpose. Log your meals." 
+UI Accent: Warm gold + ivory 
+ 
+6. Screen-by-Screen UX Specification 
+All screens follow the earthy warm design language from Image 2 references. Background: #F5F0E8. 
+Cards: #EDE6D6. Dark mode base: #1C1410. 
+ 
+🏠  Home / Daily Summary 
+Seen 3-5x per day. Must feel motivating, never shaming. 
+Components 
+• Greeting header: 'Morning, Aryan! 🌿' — first name, time-aware 
+• Large concentric ring: outer = calories, inner rings = protein / carbs / fat (from Image 2 ring 
+pattern) 
+• Dynamic goal note: 'You've walked 6,200 steps — goal adjusted to 2,180 kcal' 
+• Water tracker: 6 droplet icons, tap to fill, fills left to right 
+• Streak badge top-right: flame icon + day count (wolf paw print for Wolf archetype users) 
+• Today's food log: card list with meal name, thumbnail, calories — swipe left to delete 
+• Cheat day banner (if toggled): warm purple gradient, confetti icon 
+• Bottom quick-add FAB: camera icon, large, Sunrise Orange 
+ 
+Interactions & Animations 
+• Calorie ring animates on screen enter with spring easing (800ms) 
+• Ring color: green when under goal, amber at 90%, soft red only at 110%+ (never 
+aggressive) 
+• Number counter rolls up when calories change (react-native-reanimated) 
+• Haptic feedback when daily goal is hit exactly 
+• Microcopy adapts: 'Crushing it 🔥' / 'Almost there!' / 'Over today — no stress, tomorrow is 
+fresh' 
+ 
+📷  Camera Screen 
+The hero moment. Must feel like magic, not a loading state. 
+Components 
+• Full-screen camera view — no chrome, immersive 
+• Scanning ring: animated SVG ring in Sunrise Orange, pulses gently 
+• Top-left info button: tap for tips on good lighting 
+• Top-right: Single / Multi mode toggle (from Nutrify 2.0) 
+• Bottom sheet rises on detection: shows meal name + calorie estimate 
+• Green 'Food Detected ✓' badge animates in top-center on recognition 
+• Gallery picker icon bottom-left: scan from photo library 
+• Zoom slider bottom-right: 1x–3x 
+ 
+Interactions & Animations 
+• Scanning ring rotates continuously at 1.5s/revolution 
+• On food detection: ring flashes green, haptic impact feedback, sheet springs up 
+• Sheet entrance: spring animation with slight bounce (stiffness: 180, damping: 20) 
+• If low confidence: amber ring color, 'Not sure — please confirm' copy 
+• No loading spinners ever — animation plays throughout Gemini API call 
+• Error state: ring turns soft red, 'Point at food in good lighting' helper text 
+ 
+✅  Nutrition Confirm Screen 
+The trust bridge. Users can edit AI output before saving. 
+Components 
+• Scrollable bottom sheet (70% screen height) 
+• Meal name: large, editable inline — tap to edit 
+• Food items list: each item has name, quantity, calories — all editable 
+• Confidence badge per item: 🟢 High / 🟡 Medium / 🔴 Low 
+• Macro pills row: Protein 🟤 / Carbs 🟡 / Fat 🔵 — pill-shaped chips (from Image 2 style) 
+• Progress preview: mini version of home calorie ring showing how this meal affects today 
+• Primary CTA: 'Add to Log' — full-width, Sunrise Orange, rounded 
+• Secondary: 'Edit Manually' text link below CTA 
+• Cheat day toggle at bottom of sheet 
+ 
+Interactions & Animations 
+• Sheet dismisses with downward swipe gesture 
+• Inline edit fields: tap any value → number pad appears, value highlights in orange 
+• Saving: brief success animation (checkmark draws itself), sheet dismisses 
+• Home screen ring animates to new value after return 
+• All corrections saved to Supabase user_corrections JSONB — training data 
+ 
+🧬  Onboarding Flow (5 Screens) 
+60 seconds to win trust. Warm, not clinical. 
+Components 
+• Screen 1 — Welcome: App name, tagline 'Your transformation starts here', Start CTA 
+• Screen 2 — Personal: Name, date of birth, biological sex (inclusive language) 
+• Screen 3 — Body: Height (cm/ft toggle), weight (kg/lbs toggle), goal weight 
+• Screen 4 — Goal: Lose weight / Maintain / Build muscle — illustrated cards 
+• Screen 5 — Archetype: Gender-matched archetype grid — illustrated animal cards, tap to 
+select 
+• Screen 6 — TDEE Reveal: Animated counter reveals daily calorie goal, macro breakdown 
+shown 
+• Progress dots at top, back button, skip option on non-critical screens 
+ 
+Interactions & Animations 
+• Each screen slides in from right with spring easing 
+• Archetype cards: tap → card scales up 1.05x, border glows in archetype accent color 
+• TDEE reveal: number counts up from 0 to target (1.2s duration) 
+• Illustrations: unDraw or Humaaans style — warm, diverse, non-stock-photo 
+• No email/password on first screen — collect after TDEE reveal (higher completion) 
+ 
+🎉  Cheat Day Screen 
+Your personality moment. Gets shared on social media. 
+Components 
+• Accessed via toggle on Home screen or Confirm screen 
+• Full-screen state change: warm purple-orange gradient washes over home screen 
+• Large illustration: feast scene, celebratory 
+• Copy: 'Cheat Day Activated 🎉' / 'Enjoy it. You earned it.' / archetype-specific variant 
+• Stats still logged but displayed differently — no deficit/surplus language 
+• Calories shown as 'Fuel Consumed' not 'Over Goal' 
+• Toggle off: smooth transition back to normal mode 
+ 
+Interactions & Animations 
+• Activation: Lottie confetti animation fires (2s, non-looping) 
+• Screen color transition: 400ms ease, purple overlay 
+• All reminder copy switches to guilt-free variants for the day 
+• Haptic: success notification pattern on activation 
+ 
+📊  Progress / Stats Screen 
+The motivation screen. Inspired by Image 2 sleep stats UI. 
+Components 
+• Tab row: Days / Weeks / Months / Year (pill tabs, olive green active state) 
+• Weight trend: line chart with gradient fill below line (Victory Native) 
+• Calorie trend: bar chart, green = under goal, amber = over goal 
+• Macro breakdown: radial/fan chart — inspired by Image 2 Sleep Quality pie 
+• Streak history: GitHub-style contribution grid with olive green fill 
+• Top foods eaten (from Nutrify 2.0 inspiration): horizontal scroll cards 
+• AI Insight cards at bottom: 'You eat 40% more on Sundays — plan ahead' 
+ 
+Interactions & Animations 
+• Chart entrance: bars/lines draw in from left, 600ms staggered 
+• Tap any data point: tooltip floats up with exact value 
+• Period tab switch: smooth crossfade between chart states 
+• Insight cards: horizontal scroll, each card is tappable for detail 
+ 
+🧭  Nutridex Screen 
+Food discovery system — like a Pokédex. Inspired by Nutrify 2.0. 
+Components 
+• Grid of food item cards — locked items show silhouette 
+• Scan a food to 'unlock' its entry in Nutridex 
+• Each entry: food illustration, name, macros, times scanned 
+• Search bar at top: search unlocked foods 
+• Counter: '22 / 100 foods discovered' 
+• Categories filter: Fruits, Grains, Proteins, Dairy, Snacks, Drinks 
+• Archetype badge: 'Perfect for Wolf' labels on high-protein foods 
+ 
+Interactions & Animations 
+• New unlock animation: card flips from silhouette to revealed (card-flip 3D transform) 
+• Progress bar at top animates on new unlocks 
+• Haptic on new unlock: success pattern 
+ 
+7. Design System 
+Color Palette — Light Mode 
+Extracted from Image 2 (sleep app) and Image 3-4 (mood app). Earthy, warm, never clinical. 
+ 
+Background 
+#F5F0E8 
+Card 
+#EDE6D6 
+Border 
+#E0D5C5 
+Primary 
+#5D7A3E 
+Primary Mid 
+#7A9E54 
+Accent CTA 
+#E8703A 
+Streak 
+#E8C13A 
+Warning 
+#C0392B 
+ 
+Color Palette — Dark Mode 
+From Image 5 (Freud app dark mode). Deep warm browns, never pure black. WCAG AA compliant. 
+ 
+BG Dark 
+#1C1410 
+Card Dark 
+#2C1F16 
+Elevated 
+#3D2B1F 
+Text 
+#F0E8D8 
+Muted 
+#9E8A78 
+Primary 
+#5D7A3E 
+Accent 
+#E8703A 
+Streak 
+#E8C13A 
+ 
+Typography 
+Display & Headers 
+• Font: Nunito ExtraBold (Google Fonts, free) 
+• Used for: screen titles, big numbers, 
+archetype names 
+• Sizes: 32px (title), 40px (score), 56px (hero 
+number) 
+• Letter spacing: -0.5px for large sizes 
+Body & UI 
+• Font: Inter Regular / Medium / SemiBold 
+• Used for: body text, labels, buttons, inputs 
+• Sizes: 12px (micro), 14px (body), 16px (UI), 
+18px (subhead) 
+• Line height: 1.5x for body, 1.2x for headings 
+ 
+Component Patterns 
+Cards 
+• Border radius: 16px (standard), 24px (hero 
+cards) 
+• Background: #EDE6D6 light / #2C1F16 
+dark 
+• Shadow: 0 2px 12px rgba(61,43,31,0.08) 
+• Border: 1px solid #E0D5C5 
+Buttons 
+• Primary: full-width, 52px height, border-
+radius 16px, Sunrise Orange 
+• Secondary: outlined, same sizing, olive 
+green border 
+• Icon FAB: 64px circle, Sunrise Orange, 
+bottom-right 
+Progress Rings 
+• Built with react-native-svg 
+• Stroke width: 12px outer, 8px inner rings 
+• Background track: #E0D5C5 light / 
+#3D2B1F dark 
+• Animated with react-native-reanimated 
+withTiming 
+Charts (Victory Native) 
+• Bar charts: rounded tops (borderRadius: 4) 
+• Line charts: smooth curve, gradient fill 
+below 
+• Radial/fan: inspired by Image 2 sleep 
+quality chart 
+• Tooltips: dark pill shape, white text, spring 
+animation 
+ 
+Animation Principles 
+• Spring physics on ALL card entrances — never linear easing 
+• Reanimated 2 for all gesture-driven animations (sheets, swipes) 
+• Lottie for celebration moments: cheat day confetti, streak milestones, archetype unlocks 
+• Haptics: expo-haptics — impact on food detection, success on goal hit, notification on streak 
+• Skeleton loaders (not spinners) for all loading states — use react-native-skeleton-placeholder 
+• Number transitions: rolling counter with withTiming 600ms for all calorie/macro changes 
+ 
+8. Technical Architecture 
+Project Structure 
+nutrisnap/ 
+├── app/                    # Expo Router screens 
+│   ├── (auth)/             # Login, Register, Onboarding 
+│   ├── (tabs)/             # Main tab navigator 
+│   │   ├── index.tsx       # Home / Daily Summary 
+│   │   ├── camera.tsx      # Camera scan screen 
+│   │   ├── progress.tsx    # Stats & charts 
+│   │   ├── nutridex.tsx    # Food discovery 
+│   │   └── profile.tsx     # Profile & settings 
+│   └── confirm.tsx         # Nutrition confirm (modal) 
+├── components/             # Shared UI components 
+│   ├── rings/              # CalorieRing, MacroRing 
+│   ├── charts/             # WeightChart, CalorieChart 
+│   ├── cards/              # FoodCard, ArchetypeCard 
+│   └── sheets/             # BottomSheet components 
+├── lib/ 
+│   ├── gemini.ts           # Gemini API client + prompt 
+│   ├── supabase.ts         # Supabase client 
+│   ├── tdee.ts             # TDEE + macro calculations 
+│   └── archetypes.ts       # Archetype configs + macros 
+├── stores/                 # Zustand state stores 
+│   ├── auth.store.ts 
+│   ├── daily.store.ts      # Today's food log 
+│   └── user.store.ts       # Profile + archetype 
+├── hooks/                  # Custom React hooks 
+│   ├── usePedometer.ts     # Steps → calorie burn 
+│   └── useGemini.ts        # Camera → nutrition flow 
+├── constants/ 
+│   ├── theme.ts            # All design tokens 
+│   └── archetypes.ts       # Archetype metadata 
+└── assets/ 
+    ├── lottie/             # Confetti, celebration anims 
+    └── illustrations/      # Onboarding, empty states 
+ 
+Key Dependencies 
+Feature 
+Priority 
+Phase 
+Notes 
+expo-camera 
+P0 
+MVP 
+Camera screen with 
+permissions 
+expo-router 
+P0 
+MVP 
+File-based navigation 
+@supabase/supabase-js 
+P0 
+MVP 
+Database, auth, storage 
+zustand 
+P0 
+MVP 
+Lightweight state management 
+react-native-reanimated 
+P0 
+MVP 
+Gesture + spring animations 
+react-native-svg 
+P0 
+MVP 
+Progress rings 
+victory-native 
+P1 
+MVP 
+Charts (weight, calorie trend) 
+expo-notifications 
+P1 
+MVP 
+Push reminders 
+expo-haptics 
+P1 
+MVP 
+Tactile feedback 
+lottie-react-native 
+P1 
+MVP 
+Celebration animations 
+react-native-skeleton-placeholder 
+P1 
+MVP 
+Loading states 
+expo-sensors (Pedometer) 
+P0 
+v1.5 
+Steps → dynamic calorie goal 
+@gorhom/bottom-sheet 
+P0 
+MVP 
+Confirm screen bottom sheet 
+ 
+9. Gemini AI Integration Spec 
+The Prompt 
+System Prompt — Gemini 1.5 Flash 
+You are an expert nutritionist analyzing food photos for a health tracking app. 
+  
+Analyze the image and return ONLY a valid JSON object: 
+{ 
+  "meal_name": "descriptive name (e.g. Grilled Chicken Caesar Salad)", 
+  "food_items": [ 
+    { 
+      "name": "string", 
+      "quantity": "e.g. 1 cup / 200g / 1 medium", 
+      "calories": number, 
+      "protein_g": number, 
+      "carbs_g": number, 
+      "fat_g": number, 
+      "fiber_g": number, 
+      "confidence": "high | medium | low" 
+    } 
+  ], 
+  "total_calories": number, 
+  "total_protein_g": number, 
+  "total_carbs_g": number, 
+  "total_fat_g": number, 
+  "notes": "any important observations" 
+} 
+  
+Rules: 
+- Be CONSERVATIVE with portion estimates — users can increase, not decrease guilt 
+- List each component separately (e.g. rice and curry as separate items) 
+- If no food detected: { "error": "no_food_detected" } 
+- Return ONLY JSON. No markdown fences. No explanation text. 
+ 
+Data Collection Strategy 
+🤖  The AI Training Flywheel 
+Every scan stores: image + Gemini output + user corrections. User corrections are ground-truth 
+labels worth 100x synthetic data. This dataset trains your Qwen2.5-VL 7B model in v2, making 
+it better than Gemini at regional food recognition (especially Indian cuisine). 
+ 
+• Store raw Gemini response in food_entries.raw_gemini_response (JSONB) 
+• Store user edits as diff in food_entries.user_corrections (JSONB) 
+• Store food_entries.user_accepted_without_edit (boolean) — confirms Gemini was correct 
+• Store food image in Supabase Storage at /food-images/{user_id}/{timestamp}.jpg 
+• Target: 50,000 labeled images before starting Qwen fine-tuning 
+ 
+10. Database Schema 
+-- PROFILES (extends Supabase auth.users) 
+CREATE TABLE profiles ( 
+  id              UUID PRIMARY KEY REFERENCES auth.users, 
+  name            TEXT, 
+  age             INT, 
+  weight_kg       FLOAT, 
+  height_cm       FLOAT, 
+  goal_type       TEXT CHECK (goal_type IN ('lose_weight','maintain','gain_muscle')), 
+  calorie_goal    INT, 
+  protein_goal    INT, 
+  carb_goal       INT, 
+  fat_goal        INT, 
+  archetype       TEXT,   -- 
+'wolf'|'bear'|'lion'|'deer'|'tigress'|'phoenix'|'doe'|'lioness' 
+  archetype_tier  TEXT,   -- 'pup'|'base'|'alpha'|'legend' 
+  streak_count    INT DEFAULT 0, 
+  last_logged_date DATE, 
+  created_at      TIMESTAMPTZ DEFAULT NOW() 
+); 
+  
+-- FOOD ENTRIES 
+CREATE TABLE food_entries ( 
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(), 
+  user_id               UUID REFERENCES profiles(id), 
+  meal_name             TEXT, 
+  food_items            JSONB,       -- array of food items from Gemini 
+  total_calories        INT, 
+  protein_g             FLOAT, 
+  carbs_g               FLOAT, 
+  fat_g                 FLOAT, 
+  fiber_g               FLOAT, 
+  image_url             TEXT,        -- Supabase Storage URL 
+  raw_gemini_response   JSONB,       -- AI training data 
+  user_corrections      JSONB,       -- diff of what user changed 
+  user_accepted_without_edit BOOLEAN DEFAULT false, 
+  is_cheat_day          BOOLEAN DEFAULT false, 
+  logged_at             TIMESTAMPTZ DEFAULT NOW() 
+); 
+  
+-- DAILY SUMMARIES (cached, updated on each entry) 
+CREATE TABLE daily_summaries ( 
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(), 
+  user_id         UUID REFERENCES profiles(id), 
+  date            DATE, 
+  total_calories  INT, 
+  total_protein   FLOAT, 
+  total_carbs     FLOAT, 
+  total_fat       FLOAT, 
+  water_ml        INT DEFAULT 0, 
+  steps           INT DEFAULT 0,       -- from pedometer (v1.5) 
+  calories_burned INT DEFAULT 0,        -- calculated from steps 
+  dynamic_goal    INT,                  -- adjusted goal after steps 
+  is_cheat_day    BOOLEAN DEFAULT false, 
+  goal_met        BOOLEAN, 
+  UNIQUE(user_id, date) 
+); 
+  
+-- WEIGHT LOGS 
+CREATE TABLE weight_logs ( 
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(), 
+  user_id     UUID REFERENCES profiles(id), 
+  weight_kg   FLOAT, 
+  logged_at   TIMESTAMPTZ DEFAULT NOW() 
+); 
+  
+-- NUTRIDEX UNLOCKS 
+CREATE TABLE nutridex_entries ( 
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(), 
+  user_id     UUID REFERENCES profiles(id), 
+  food_name   TEXT, 
+  category    TEXT, 
+  times_scanned INT DEFAULT 1, 
+  first_scanned TIMESTAMPTZ DEFAULT NOW() 
+); 
+ 
+11. Notification System 
+All notifications use Expo Notifications. Copy is archetype-aware — the same trigger fires different copy 
+depending on user's archetype. 
+ 
+Feature 
+Priority 
+Phase 
+Notes 
+Meal Reminder 
+P1 
+MVP 
+User sets time — fires daily at 
+chosen time 
+Water Reminder 
+P1 
+MVP 
+Every 2 hours between 8am-
+8pm if under goal 
+Streak Milestone 
+P1 
+MVP 
+Day 7, 14, 30, 60, 100 — 
+celebration copy 
+Goal Hit Notification 
+P1 
+MVP 
+When daily calorie goal is met 
+— positive 
+Dynamic Goal Update 
+P0 
+v1.5 
+'You walked 10k steps — eat 
+350 more calories' 
+Archetype Tier Up 
+P0 
+v1.5 
+When user progresses to next 
+tier 
+Weekly Summary 
+P2 
+v1.5 
+Sunday evening: your week in 
+review 
+ 
+Sample Archetype Notification Copy 
+🐺 Wolf 
+Meal reminder: "Wolves don't skip meals. 
+Fuel the hunt." 
+Streak: "7 days of precision. The pack is 
+watching." 
+Goal hit: "Macros locked in. Efficient as 
+always." 
+🔥 Phoenix 
+Meal reminder: "Every meal is a choice to 
+rise. Make it count." 
+Streak: "7 days rising. You're becoming her. 
+🔥" 
+Goal hit: "Today you soared. See you 
+tomorrow, Phoenix." 
+ 
+12. Monetization Strategy 
+💡  Launch Free. Monetize at 1,000 Active Users. 
+Don't add paywalls in MVP. You need ratings, reviews, and organic word-of-mouth first. Design 
+with monetization in mind from day one, but ship fully free. Add paywall at Month 3 when you 
+have social proof. 
+ 
+Free — Always 
+• 5 camera scans / day 
+• Basic calorie tracking 
+• 30-day food history 
+• 1 habit streak (calories) 
+• Standard reminders 
+• Basic archetype (onboarding only) 
+Premium 🌿 
+₹299/mo · ₹1,999/yr  |  $4.99/mo · $29.99/yr 
+• Unlimited camera scans 
+• Full nutrition history 
+• Full Archetype System + progression 
+• Dynamic calorie goal (steps) 
+• Advanced macro targets 
+• Data export CSV/PDF 
+• Archetype shareable cards 
+• Priority AI response 
+ 
+13. Success Metrics 
+MVP Launch Targets (Week 6–12) 
+500 
+Active users in first month 
+4.2★ 
+App store rating target 
+ 
+40% 
+Day-7 retention rate 
+3+ 
+Daily opens per active user 
+ 
+PostHog Events to Track (Day One) 
+• scan_initiated, scan_completed, scan_failed — Camera funnel 
+• nutrition_confirmed, nutrition_edited, nutrition_cancelled — Trust bridge 
+• cheat_day_activated — Viral feature engagement 
+• archetype_selected — Onboarding completion 
+• streak_milestone_7, streak_milestone_30 — Retention signal 
+• goal_hit_today — Core product success 
+• paywall_seen, paywall_converted — Monetization funnel (v2) 
+ 
+ 
+ 
+NutriSnap PRD v1.0  ·  Built for Copilot  ·  🌿 

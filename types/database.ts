@@ -1,6 +1,6 @@
 /**
- * Supabase database type definitions
- * These match the SQL schema exactly
+ * Neon database type definitions
+ * These match the SQL schema in docs/schema.sql
  */
 
 import type { ArchetypeKey, ArchetypeTier, BiologicalSex, GoalType } from './archetype';
@@ -69,6 +69,8 @@ export interface Profile {
   fat_goal: number | null;
   archetype: ArchetypeKey | null;
   archetype_tier: ArchetypeTier;
+  archetype_progress: number;
+  archetype_level: string;
   streak_count: number;
   longest_streak: number;
   last_logged_date: string | null;

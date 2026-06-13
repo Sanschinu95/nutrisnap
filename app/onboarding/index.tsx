@@ -1,8 +1,14 @@
 /**
- * Onboarding - 9-step Typeform-style flow
+ * Onboarding - Redesigned multi-step flow
+ * Steps: Gender → Archetype → Body Stats → Goal
+ * Inspired by: archetype.png mockup
+ *
+ * Archetype card behavior:
+ * - Single tap: scale 1.07x, show expanded info, glowing border
+ * - Double tap: select and proceed
  */
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -14,6 +20,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -24,32 +31,57 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   withTiming,
-  interpolate,
-  FadeIn,
-  FadeOut,
+  withRepeat,
+  withSequence,
+  Easing,
+  FadeInDown,
+  interpolateColor,
+  cancelAnimation,
 } from 'react-native-reanimated';
 import { ThemedText } from '@/components/ui/ThemedText';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 import { useTheme } from '@/hooks/useTheme';
 import { useUserStore } from '@/stores/user.store';
-import { ARCHETYPES, type ArchetypeKey } from '@/constants/archetypes';
+import { ARCHETYPES, ARCHETYPE_MACROS, type ArchetypeKey, FEMALE_ARCHETYPES } from '@/constants/archetypes';
 import { ArchetypeColors, Spacing, BorderRadius, Colors } from '@/constants/theme';
 import type { BiologicalSex, GoalType } from '@/types/archetype';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-type StepData = {
-  name: string;
-  biologicalSex: BiologicalSex | null;
-  age: number | null;
-  weight: number | null; // kg
-  height: number | null; // cm
-  goal: GoalType | null;
-  activityLevel: number | null; // 1-5
-  archetype: ArchetypeKey | null;
-  notificationsEnabled: boolean;
+const MALE_ARCHETYPES: ArchetypeKey[] = ['wolf', 'bear', 'lion', 'deer'];
+
+const ARCHETYPE_IMAGES: Record<ArchetypeKey, any> = {
+  wolf: require('@/assets/archetypes/wolf.png'),
+  bear: require('@/assets/archetypes/bear.png'),
+  lion: require('@/assets/archetypes/lion.png'),
+  deer: require('@/assets/archetypes/deer.png'),
+  tigress: require('@/assets/archetypes/tigress.png'),
+  phoenix: require('@/assets/archetypes/phoenix.png'),
+  doe: require('@/assets/archetypes/doe.png'),
+  swan: require('@/assets/archetypes/swan.png'),
 };
+
+const GENDER_IMAGES = {
+  male: require('@/assets/archetypes/male.png'),
+  female: require('@/assets/archetypes/female.png'),
+};
+
+const ARCHETYPE_BADGES: Record<ArchetypeKey, string> = {
+  wolf: 'Lean & Athletic',
+  bear: 'Bulk & Strength',
+  lion: 'Balanced Power',
+  deer: 'Endurance & Flexibility',
+  tigress: 'Fierce & Lean',
+  phoenix: 'Rising Transformation',
+  doe: 'Graceful & Balanced',
+  swan: 'Elegant & Disciplined',
+};
+
+const GOAL_OPTIONS = [
+  { value: 'cut', label: '🔪 Cut', desc: 'Lose fat, maintain muscle' },
+  { value: 'maintain', label: '⚖️ Maintain', desc: 'Stay at current weight' },
+  { value: 'bulk', label: '💪 Bulk', desc: 'Gain muscle, minimize fat' },
+];
 
 const ACTIVITY_OPTIONS = [
   { value: 1, label: 'Sedentary', desc: 'Little to no exercise' },
@@ -59,21 +91,189 @@ const ACTIVITY_OPTIONS = [
   { value: 5, label: 'Very Active', desc: 'Pro athlete level' },
 ];
 
-const GOAL_OPTIONS = [
-  { value: 'cut', label: '🔪 Cut', desc: 'Lose fat, maintain muscle' },
-  { value: 'maintain', label: '⚖️ Maintain', desc: 'Stay at current weight' },
-  { value: 'bulk', label: '💪 Bulk', desc: 'Gain muscle, minimize fat' },
-];
+type StepData = {
+  name: string;
+  biologicalSex: BiologicalSex | null;
+  age: number | null;
+  weight: number | null;
+  height: number | null;
+  goal: GoalType | null;
+  activityLevel: number | null;
+  archetype: ArchetypeKey | null;
+};
 
-const MALE_ARCHETYPES: ArchetypeKey[] = ['wolf', 'bear', 'lion', 'deer'];
-const FEMALE_ARCHETYPES: ArchetypeKey[] = ['tigress', 'phoenix', 'doe', 'lioness'];
+// ─── Glowing Archetype Card ─────────────────────────────────────
+function GlowingArchetypeCard({
+  archetypeKey,
+  isExpanded,
+  isSelected,
+  onSingleTap,
+  onDoubleTap,
+}: {
+  archetypeKey: ArchetypeKey;
+  isExpanded: boolean;
+  isSelected: boolean;
+  onSingleTap: () => void;
+  onDoubleTap: () => void;
+}) {
+  const { theme } = useTheme();
+  const info = ARCHETYPES[archetypeKey];
+  const accentColor = info.colors.accent;
+  const cardWidth = (SCREEN_WIDTH - Spacing.xl * 2 - Spacing.md) / 2;
 
+  // Scale animation
+  const scale = useSharedValue(1);
+  // Glow animation for border
+  const glowProgress = useSharedValue(0);
+
+  // Track for double tap
+  const lastTap = useRef<number>(0);
+  const DOUBLE_TAP_DELAY = 300;
+
+  useEffect(() => {
+    if (isExpanded) {
+      scale.value = withSpring(1.07, { damping: 12, stiffness: 150 });
+      // Start glowing border animation
+      glowProgress.value = withRepeat(
+        withTiming(1, { duration: 2000, easing: Easing.linear }),
+        -1,
+        false
+      );
+    } else {
+      scale.value = withSpring(1, { damping: 14, stiffness: 200 });
+      cancelAnimation(glowProgress);
+      glowProgress.value = withTiming(0, { duration: 300 });
+    }
+  }, [isExpanded, scale, glowProgress]);
+
+  const animatedCardStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const animatedBorderStyle = useAnimatedStyle(() => {
+    if (!isExpanded) {
+      return {
+        borderColor: isSelected ? accentColor : theme.border,
+        borderWidth: isSelected ? 2.5 : 1,
+      };
+    }
+    // Animate border color through accent shades
+    const color = interpolateColor(
+      glowProgress.value,
+      [0, 0.33, 0.66, 1],
+      [accentColor + '40', accentColor, accentColor + '80', accentColor + '40']
+    );
+    return {
+      borderColor: color,
+      borderWidth: 2.5,
+    };
+  });
+
+  // Shadow glow for expanded
+  const animatedShadowStyle = useAnimatedStyle(() => ({
+    shadowOpacity: isExpanded ? 0.4 : 0.08,
+    shadowRadius: isExpanded ? 16 : 6,
+    shadowColor: isExpanded ? accentColor : '#000',
+    elevation: isExpanded ? 8 : 2,
+  }));
+
+  const handlePress = () => {
+    const now = Date.now();
+    if (now - lastTap.current < DOUBLE_TAP_DELAY) {
+      // Double tap
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      onDoubleTap();
+    } else {
+      // Single tap
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      onSingleTap();
+    }
+    lastTap.current = now;
+  };
+
+  const macroP = Math.round(info.macros.protein * 100);
+  const macroC = Math.round(info.macros.carbs * 100);
+  const macroF = Math.round(info.macros.fat * 100);
+
+  return (
+    <Animated.View style={[animatedCardStyle, animatedShadowStyle, { shadowOffset: { width: 0, height: 4 } }]}>
+      <Pressable onPress={handlePress}>
+        <Animated.View
+          style={[
+            styles.archetypeCard,
+            { width: cardWidth, backgroundColor: theme.card },
+            animatedBorderStyle,
+          ]}
+        >
+          {/* Image */}
+          <View style={styles.archetypeImageContainer}>
+            <Image
+              source={ARCHETYPE_IMAGES[archetypeKey]}
+              style={styles.archetypeImage}
+              resizeMode="contain"
+            />
+          </View>
+
+          {/* Name */}
+          <ThemedText
+            variant="h3"
+            color={isExpanded ? accentColor : theme.text}
+            align="center"
+            style={styles.archetypeName}
+          >
+            {info.name}
+          </ThemedText>
+
+          {/* Badge */}
+          <View style={[styles.archetypeBadge, { backgroundColor: theme.border }]}>
+            <ThemedText variant="labelSmall" color={theme.textSecondary} align="center">
+              {ARCHETYPE_BADGES[archetypeKey]}
+            </ThemedText>
+          </View>
+
+          {/* Description */}
+          <ThemedText
+            variant="label"
+            color={theme.textMuted}
+            align="center"
+            style={styles.archetypeDesc}
+            numberOfLines={isExpanded ? 5 : 2}
+          >
+            {isExpanded ? info.longDescription : info.description}
+          </ThemedText>
+
+          {/* Expanded: macro breakdown */}
+          {isExpanded && (
+            <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.macroExpanded}>
+              <View style={styles.macroRow}>
+                <ThemedText variant="label" color={Colors.olive}>Protein {macroP}%</ThemedText>
+              </View>
+              <View style={styles.macroRow}>
+                <ThemedText variant="label" color={Colors.orange}>Carbs {macroC}%</ThemedText>
+              </View>
+              <View style={styles.macroRow}>
+                <ThemedText variant="label" color={Colors.yellow}>Fat {macroF}%</ThemedText>
+              </View>
+
+              <ThemedText variant="labelSmall" color={theme.textMuted} align="center" style={styles.doubleTapHint}>
+                Double tap to select
+              </ThemedText>
+            </Animated.View>
+          )}
+        </Animated.View>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+// ─── Main Onboarding Screen ─────────────────────────────────────
 export default function OnboardingScreen() {
-  const { theme, colorScheme } = useTheme();
-  const { completeOnboarding, profile } = useUserStore();
-  
+  const { theme } = useTheme();
+  const { completeOnboarding } = useUserStore();
+
   const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [expandedArchetype, setExpandedArchetype] = useState<ArchetypeKey | null>(null);
   const [data, setData] = useState<StepData>({
     name: '',
     biologicalSex: null,
@@ -83,13 +283,13 @@ export default function OnboardingScreen() {
     goal: null,
     activityLevel: null,
     archetype: null,
-    notificationsEnabled: true,
   });
-  
+
   const progress = useSharedValue(0);
   const scrollRef = useRef<FlatList>(null);
-
-  const TOTAL_STEPS = 9;
+  // Total steps: 0=Gender, 1=Archetype, 2=BodyStats, 3=Goal
+  const TOTAL_STEPS = 4;
+  const DISPLAY_STEP_OFFSET = 2; // We're steps 2-5 of 6 total (continue=1, diet=5, etc.)
 
   const updateData = useCallback(<K extends keyof StepData>(key: K, value: StepData[K]) => {
     setData(prev => ({ ...prev, [key]: value }));
@@ -97,32 +297,33 @@ export default function OnboardingScreen() {
 
   const canProceed = useCallback((): boolean => {
     switch (currentStep) {
-      case 0: return data.name.trim().length >= 2;
-      case 1: return data.biologicalSex !== null;
-      case 2: return data.age !== null && data.age >= 13 && data.age <= 120;
-      case 3: return data.weight !== null && data.weight >= 30 && data.weight <= 300;
-      case 4: return data.height !== null && data.height >= 100 && data.height <= 250;
-      case 5: return data.goal !== null;
-      case 6: return data.activityLevel !== null;
-      case 7: return data.archetype !== null;
-      case 8: return true; // Notifications is optional
+      case 0: return data.biologicalSex !== null;
+      case 1: return data.archetype !== null;
+      case 2: return (
+        data.name.trim().length >= 2 &&
+        data.age !== null && data.age >= 13 && data.age <= 120 &&
+        data.weight !== null && data.weight >= 30 && data.weight <= 300 &&
+        data.height !== null && data.height >= 100 && data.height <= 250 &&
+        data.activityLevel !== null
+      );
+      case 3: return data.goal !== null;
       default: return false;
     }
   }, [currentStep, data]);
 
   const goNext = useCallback(async () => {
     if (!canProceed()) return;
-    
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
+
     if (currentStep < TOTAL_STEPS - 1) {
       const nextStep = currentStep + 1;
       setCurrentStep(nextStep);
-      progress.value = withSpring((nextStep + 1) / TOTAL_STEPS);
+      progress.value = withSpring((nextStep + DISPLAY_STEP_OFFSET) / 6);
       scrollRef.current?.scrollToIndex({ index: nextStep, animated: true });
     } else {
-      // Final step - submit
-      await handleComplete();
+      // Navigate to diet page
+      await handleProceedToDiet();
     }
   }, [currentStep, canProceed, progress]);
 
@@ -131,54 +332,50 @@ export default function OnboardingScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const prevStep = currentStep - 1;
       setCurrentStep(prevStep);
-      progress.value = withSpring((prevStep + 1) / TOTAL_STEPS);
+      progress.value = withSpring((prevStep + DISPLAY_STEP_OFFSET) / 6);
       scrollRef.current?.scrollToIndex({ index: prevStep, animated: true });
+    } else {
+      router.back();
     }
   }, [currentStep, progress]);
 
-  const handleComplete = async () => {
-    // Validate all required data is present
-    if (
-      !data.name.trim() ||
-      !data.biologicalSex ||
-      !data.age ||
-      !data.weight ||
-      !data.height ||
-      !data.goal ||
-      !data.activityLevel ||
-      !data.archetype
-    ) {
-      Alert.alert('Error', 'Please complete all required fields');
-      return;
-    }
-    
-    try {
-      setIsSubmitting(true);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      
-      const result = await completeOnboarding({
+  const handleProceedToDiet = async () => {
+    // Save data in state for now, navigate to diet screen
+    // Will pass all data to final submission
+    router.push({
+      pathname: '/onboarding/diet' as any,
+      params: {
         name: data.name.trim(),
-        biological_sex: data.biologicalSex,
-        age: data.age,
-        weight_kg: data.weight,
-        height_cm: data.height,
-        goal_type: data.goal,
-        activity_level: data.activityLevel,
-        archetype: data.archetype,
-      });
-      
-      if (result.success) {
-        router.replace('/(tabs)/camera');
-      } else {
-        Alert.alert('Error', result.error ?? 'Failed to save profile');
-      }
-    } catch (error) {
-      console.error('Onboarding error:', error);
-      Alert.alert('Error', 'Something went wrong. Please try again.');
-    } finally {
-      setIsSubmitting(false);
-    }
+        biologicalSex: data.biologicalSex!,
+        age: String(data.age!),
+        weight: String(data.weight!),
+        height: String(data.height!),
+        goal: data.goal!,
+        activityLevel: String(data.activityLevel!),
+        archetype: data.archetype!,
+      },
+    });
   };
+
+  const handleArchetypeSingleTap = (key: ArchetypeKey) => {
+    setExpandedArchetype(prev => prev === key ? null : key);
+  };
+
+  const handleArchetypeDoubleTap = (key: ArchetypeKey) => {
+    updateData('archetype', key);
+    setExpandedArchetype(key);
+    // Auto-advance after a brief moment
+    setTimeout(() => {
+      const nextStep = currentStep + 1;
+      setCurrentStep(nextStep);
+      progress.value = withSpring((nextStep + DISPLAY_STEP_OFFSET) / 6);
+      scrollRef.current?.scrollToIndex({ index: nextStep, animated: true });
+    }, 400);
+  };
+
+  useEffect(() => {
+    progress.value = withSpring((currentStep + DISPLAY_STEP_OFFSET) / 6);
+  }, []);
 
   const progressAnimatedStyle = useAnimatedStyle(() => ({
     width: `${progress.value * 100}%`,
@@ -188,163 +385,211 @@ export default function OnboardingScreen() {
 
   const renderStep = useCallback(({ item, index }: { item: number; index: number }) => {
     switch (index) {
+      // Step 0: Gender selection
       case 0:
         return (
           <StepContainer>
-            <ThemedText variant="h2" style={styles.stepTitle}>
-              What's your name? 👋
-            </ThemedText>
-            <TextInput
-              style={[styles.textInput, { color: theme.text, borderColor: theme.border }]}
-              value={data.name}
-              onChangeText={(text) => updateData('name', text)}
-              placeholder="Enter your name"
-              placeholderTextColor={theme.textMuted}
-              autoFocus
-              returnKeyType="next"
-              onSubmitEditing={goNext}
-            />
-          </StepContainer>
-        );
-        
-      case 1:
-        return (
-          <StepContainer>
-            <ThemedText variant="h2" style={styles.stepTitle}>
-              Biological Sex 🧬
+            <ThemedText variant="h1" style={styles.stepTitle}>
+              Who do you want to{'\n'}become?
             </ThemedText>
             <ThemedText variant="body" color={theme.textMuted} style={styles.stepSubtitle}>
-              This helps calculate your metabolism accurately
+              Select your biological sex to personalize your archetypes
             </ThemedText>
-            <View style={styles.optionsGrid}>
-              {(['male', 'female'] as const).map((sex) => (
+
+            <View style={styles.genderGrid}>
+              {(['female', 'male'] as const).map((sex) => (
                 <Pressable
                   key={sex}
                   style={[
-                    styles.optionCard,
+                    styles.genderCard,
                     {
-                      backgroundColor: data.biologicalSex === sex ? theme.primary : theme.card,
+                      backgroundColor: data.biologicalSex === sex ? theme.primary + '15' : theme.card,
                       borderColor: data.biologicalSex === sex ? theme.primary : theme.border,
+                      borderWidth: data.biologicalSex === sex ? 2.5 : 1,
                     },
                   ]}
                   onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     updateData('biologicalSex', sex);
-                    // Reset archetype when sex changes
                     updateData('archetype', null);
+                    setExpandedArchetype(null);
                   }}
                 >
+                  <Image
+                    source={GENDER_IMAGES[sex]}
+                    style={styles.genderImage}
+                    resizeMode="contain"
+                  />
                   <ThemedText
                     variant="h3"
-                    color={data.biologicalSex === sex ? 'white' : theme.text}
+                    color={data.biologicalSex === sex ? theme.primary : theme.text}
+                    align="center"
                   >
-                    {sex === 'male' ? '♂️' : '♀️'}
-                  </ThemedText>
-                  <ThemedText
-                    variant="bodyMedium"
-                    color={data.biologicalSex === sex ? 'white' : theme.text}
-                  >
-                    {sex.charAt(0).toUpperCase() + sex.slice(1)}
+                    {sex === 'male' ? 'Male' : 'Female'}
                   </ThemedText>
                 </Pressable>
               ))}
             </View>
           </StepContainer>
         );
-        
+
+      // Step 1: Archetype selection
+      case 1:
+        return (
+          <StepContainer>
+            <ThemedText variant="h1" style={styles.stepTitle}>
+              Who do you want to{'\n'}become?
+            </ThemedText>
+            <ThemedText variant="body" color={theme.textMuted} style={styles.stepSubtitle}>
+              Choose the physical archetype that best aligns with your long-term wellness vision.
+            </ThemedText>
+
+            <View style={styles.archetypeGrid}>
+              {archetypes.map((key) => (
+                <GlowingArchetypeCard
+                  key={key}
+                  archetypeKey={key}
+                  isExpanded={expandedArchetype === key}
+                  isSelected={data.archetype === key}
+                  onSingleTap={() => handleArchetypeSingleTap(key)}
+                  onDoubleTap={() => handleArchetypeDoubleTap(key)}
+                />
+              ))}
+            </View>
+          </StepContainer>
+        );
+
+      // Step 2: Body stats (compact)
       case 2:
         return (
           <StepContainer>
-            <ThemedText variant="h2" style={styles.stepTitle}>
-              How old are you? 🎂
+            <ThemedText variant="h1" style={styles.stepTitle}>
+              Tell us about you 📋
             </ThemedText>
-            <TextInput
-              style={[styles.textInput, { color: theme.text, borderColor: theme.border }]}
-              value={data.age?.toString() ?? ''}
-              onChangeText={(text) => updateData('age', parseInt(text) || null)}
-              placeholder="Enter your age"
-              placeholderTextColor={theme.textMuted}
-              keyboardType="number-pad"
-              returnKeyType="next"
-              onSubmitEditing={goNext}
-            />
+            <ThemedText variant="body" color={theme.textMuted} style={styles.stepSubtitle}>
+              We need this to calculate your personalized nutrition plan
+            </ThemedText>
+
+            {/* Name */}
+            <View style={styles.fieldGroup}>
+              <ThemedText variant="bodyMedium" style={styles.fieldLabel}>Name</ThemedText>
+              <TextInput
+                style={[styles.textInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.card }]}
+                value={data.name}
+                onChangeText={(text) => updateData('name', text)}
+                placeholder="Your name"
+                placeholderTextColor={theme.textMuted}
+              />
+            </View>
+
+            {/* Age + Weight row */}
+            <View style={styles.fieldRow}>
+              <View style={[styles.fieldGroup, { flex: 1 }]}>
+                <ThemedText variant="bodyMedium" style={styles.fieldLabel}>Age</ThemedText>
+                <TextInput
+                  style={[styles.textInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.card }]}
+                  value={data.age?.toString() ?? ''}
+                  onChangeText={(text) => updateData('age', parseInt(text) || null)}
+                  placeholder="25"
+                  placeholderTextColor={theme.textMuted}
+                  keyboardType="number-pad"
+                />
+              </View>
+              <View style={[styles.fieldGroup, { flex: 1 }]}>
+                <ThemedText variant="bodyMedium" style={styles.fieldLabel}>Weight (kg)</ThemedText>
+                <TextInput
+                  style={[styles.textInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.card }]}
+                  value={data.weight?.toString() ?? ''}
+                  onChangeText={(text) => updateData('weight', parseFloat(text) || null)}
+                  placeholder="70"
+                  placeholderTextColor={theme.textMuted}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+            </View>
+
+            {/* Height */}
+            <View style={styles.fieldGroup}>
+              <ThemedText variant="bodyMedium" style={styles.fieldLabel}>Height (cm)</ThemedText>
+              <TextInput
+                style={[styles.textInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.card }]}
+                value={data.height?.toString() ?? ''}
+                onChangeText={(text) => updateData('height', parseFloat(text) || null)}
+                placeholder="170"
+                placeholderTextColor={theme.textMuted}
+                keyboardType="decimal-pad"
+              />
+            </View>
+
+            {/* Activity Level */}
+            <View style={styles.fieldGroup}>
+              <ThemedText variant="bodyMedium" style={styles.fieldLabel}>Activity Level</ThemedText>
+              <View style={styles.activityGrid}>
+                {ACTIVITY_OPTIONS.map((opt) => (
+                  <Pressable
+                    key={opt.value}
+                    style={[
+                      styles.activityChip,
+                      {
+                        backgroundColor: data.activityLevel === opt.value ? theme.primary : theme.card,
+                        borderColor: data.activityLevel === opt.value ? theme.primary : theme.border,
+                      },
+                    ]}
+                    onPress={() => updateData('activityLevel', opt.value)}
+                  >
+                    <ThemedText
+                      variant="label"
+                      color={data.activityLevel === opt.value ? 'white' : theme.text}
+                    >
+                      {opt.label}
+                    </ThemedText>
+                    <ThemedText
+                      variant="labelSmall"
+                      color={data.activityLevel === opt.value ? 'rgba(255,255,255,0.7)' : theme.textMuted}
+                    >
+                      {opt.desc}
+                    </ThemedText>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
           </StepContainer>
         );
-        
+
+      // Step 3: Goal
       case 3:
         return (
           <StepContainer>
-            <ThemedText variant="h2" style={styles.stepTitle}>
-              Current weight? ⚖️
-            </ThemedText>
-            <View style={styles.inputWithUnit}>
-              <TextInput
-                style={[styles.textInput, styles.inputFlex, { color: theme.text, borderColor: theme.border }]}
-                value={data.weight?.toString() ?? ''}
-                onChangeText={(text) => updateData('weight', parseFloat(text) || null)}
-                placeholder="Weight"
-                placeholderTextColor={theme.textMuted}
-                keyboardType="decimal-pad"
-                returnKeyType="next"
-                onSubmitEditing={goNext}
-              />
-              <ThemedText variant="h3" color={theme.textMuted} style={styles.unitLabel}>
-                kg
-              </ThemedText>
-            </View>
-          </StepContainer>
-        );
-        
-      case 4:
-        return (
-          <StepContainer>
-            <ThemedText variant="h2" style={styles.stepTitle}>
-              Height? 📏
-            </ThemedText>
-            <View style={styles.inputWithUnit}>
-              <TextInput
-                style={[styles.textInput, styles.inputFlex, { color: theme.text, borderColor: theme.border }]}
-                value={data.height?.toString() ?? ''}
-                onChangeText={(text) => updateData('height', parseFloat(text) || null)}
-                placeholder="Height"
-                placeholderTextColor={theme.textMuted}
-                keyboardType="decimal-pad"
-                returnKeyType="next"
-                onSubmitEditing={goNext}
-              />
-              <ThemedText variant="h3" color={theme.textMuted} style={styles.unitLabel}>
-                cm
-              </ThemedText>
-            </View>
-          </StepContainer>
-        );
-        
-      case 5:
-        return (
-          <StepContainer>
-            <ThemedText variant="h2" style={styles.stepTitle}>
+            <ThemedText variant="h1" style={styles.stepTitle}>
               What's your goal? 🎯
             </ThemedText>
-            <View style={styles.optionsStack}>
+            <ThemedText variant="body" color={theme.textMuted} style={styles.stepSubtitle}>
+              This adjusts your daily calorie target
+            </ThemedText>
+            <View style={styles.goalStack}>
               {GOAL_OPTIONS.map((option) => (
                 <Pressable
                   key={option.value}
                   style={[
-                    styles.optionRow,
+                    styles.goalCard,
                     {
                       backgroundColor: data.goal === option.value ? theme.primary : theme.card,
                       borderColor: data.goal === option.value ? theme.primary : theme.border,
                     },
                   ]}
-                  onPress={() => updateData('goal', option.value as GoalType)}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    updateData('goal', option.value as GoalType);
+                  }}
                 >
                   <ThemedText
-                    variant="bodyMedium"
+                    variant="h3"
                     color={data.goal === option.value ? 'white' : theme.text}
                   >
                     {option.label}
                   </ThemedText>
                   <ThemedText
-                    variant="label"
+                    variant="body"
                     color={data.goal === option.value ? 'rgba(255,255,255,0.8)' : theme.textMuted}
                   >
                     {option.desc}
@@ -354,172 +599,11 @@ export default function OnboardingScreen() {
             </View>
           </StepContainer>
         );
-        
-      case 6:
-        return (
-          <StepContainer>
-            <ThemedText variant="h2" style={styles.stepTitle}>
-              Activity level? 🏃
-            </ThemedText>
-            <View style={styles.optionsStack}>
-              {ACTIVITY_OPTIONS.map((option) => (
-                <Pressable
-                  key={option.value}
-                  style={[
-                    styles.optionRow,
-                    {
-                      backgroundColor: data.activityLevel === option.value ? theme.primary : theme.card,
-                      borderColor: data.activityLevel === option.value ? theme.primary : theme.border,
-                    },
-                  ]}
-                  onPress={() => updateData('activityLevel', option.value)}
-                >
-                  <ThemedText
-                    variant="bodyMedium"
-                    color={data.activityLevel === option.value ? 'white' : theme.text}
-                  >
-                    {option.label}
-                  </ThemedText>
-                  <ThemedText
-                    variant="label"
-                    color={data.activityLevel === option.value ? 'rgba(255,255,255,0.8)' : theme.textMuted}
-                  >
-                    {option.desc}
-                  </ThemedText>
-                </Pressable>
-              ))}
-            </View>
-          </StepContainer>
-        );
-        
-      case 7:
-        return (
-          <StepContainer>
-            <ThemedText variant="h2" style={styles.stepTitle}>
-              Pick your archetype 🦁
-            </ThemedText>
-            <ThemedText variant="body" color={theme.textMuted} style={styles.stepSubtitle}>
-              This defines your macro ratios and meal style
-            </ThemedText>
-            <View style={styles.archetypeGrid}>
-              {archetypes.map((key) => {
-                const archetype = ARCHETYPES[key];
-                const colors = ArchetypeColors[key];
-                const isSelected = data.archetype === key;
-                
-                return (
-                  <Pressable
-                    key={key}
-                    style={[
-                      styles.archetypeCard,
-                      {
-                        backgroundColor: isSelected ? colors.primary : theme.card,
-                        borderColor: isSelected ? colors.primary : theme.border,
-                      },
-                    ]}
-                    onPress={() => updateData('archetype', key)}
-                  >
-                    <View
-                      style={[
-                        styles.archetypeIcon,
-                        { backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : colors.primary },
-                      ]}
-                    >
-                      <ThemedText variant="h2">{archetype.emoji}</ThemedText>
-                    </View>
-                    <ThemedText
-                      variant="bodyMedium"
-                      color={isSelected ? 'white' : theme.text}
-                      style={styles.archetypeName}
-                    >
-                      {archetype.name}
-                    </ThemedText>
-                    <ThemedText
-                      variant="labelSmall"
-                      color={isSelected ? 'rgba(255,255,255,0.8)' : theme.textMuted}
-                      align="center"
-                    >
-                      {archetype.description}
-                    </ThemedText>
-                    <ThemedText
-                      variant="labelSmall"
-                      color={isSelected ? 'rgba(255,255,255,0.7)' : colors.primary}
-                      style={styles.archetypeMacros}
-                    >
-                      P{Math.round(archetype.macros.protein * 100)} C{Math.round(archetype.macros.carbs * 100)} F{Math.round(archetype.macros.fat * 100)}
-                    </ThemedText>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </StepContainer>
-        );
-        
-      case 8:
-        return (
-          <StepContainer>
-            <View style={[styles.celebrationIcon, { backgroundColor: theme.primary }]}>
-              <Ionicons name="checkmark-circle" size={64} color="white" />
-            </View>
-            <ThemedText variant="h2" style={styles.stepTitle}>
-              You're all set! 🎉
-            </ThemedText>
-            <ThemedText variant="body" color={theme.textMuted} style={styles.stepSubtitle}>
-              Would you like to receive daily reminders to track your meals?
-            </ThemedText>
-            <View style={styles.notificationOptions}>
-              <Pressable
-                style={[
-                  styles.notificationCard,
-                  {
-                    backgroundColor: data.notificationsEnabled ? theme.primary : theme.card,
-                    borderColor: data.notificationsEnabled ? theme.primary : theme.border,
-                  },
-                ]}
-                onPress={() => updateData('notificationsEnabled', true)}
-              >
-                <Ionicons
-                  name="notifications"
-                  size={32}
-                  color={data.notificationsEnabled ? 'white' : theme.textMuted}
-                />
-                <ThemedText
-                  variant="bodyMedium"
-                  color={data.notificationsEnabled ? 'white' : theme.text}
-                >
-                  Yes, remind me
-                </ThemedText>
-              </Pressable>
-              <Pressable
-                style={[
-                  styles.notificationCard,
-                  {
-                    backgroundColor: !data.notificationsEnabled ? theme.card : theme.card,
-                    borderColor: !data.notificationsEnabled ? theme.text : theme.border,
-                  },
-                ]}
-                onPress={() => updateData('notificationsEnabled', false)}
-              >
-                <Ionicons
-                  name="notifications-off"
-                  size={32}
-                  color={theme.textMuted}
-                />
-                <ThemedText
-                  variant="bodyMedium"
-                  color={theme.text}
-                >
-                  No thanks
-                </ThemedText>
-              </Pressable>
-            </View>
-          </StepContainer>
-        );
-        
+
       default:
         return null;
     }
-  }, [data, theme, archetypes, updateData, goNext]);
+  }, [data, theme, archetypes, expandedArchetype, updateData, goNext]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -527,19 +611,24 @@ export default function OnboardingScreen() {
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {/* Progress bar */}
-        <View style={styles.progressContainer}>
-          <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>
-            <Animated.View
-              style={[styles.progressFill, { backgroundColor: theme.primary }, progressAnimatedStyle]}
-            />
+        {/* Header with back + progress */}
+        <View style={styles.headerRow}>
+          <Pressable style={styles.backButton} onPress={goBack}>
+            <Ionicons name="arrow-back" size={24} color={theme.text} />
+          </Pressable>
+          <View style={styles.progressSection}>
+            <ThemedText variant="label" color={theme.textMuted} style={styles.progressLabel}>
+              Progress: {currentStep + DISPLAY_STEP_OFFSET} / 6
+            </ThemedText>
+            <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>
+              <Animated.View
+                style={[styles.progressFill, { backgroundColor: Colors.olive }, progressAnimatedStyle]}
+              />
+            </View>
           </View>
-          <ThemedText variant="label" color={theme.textMuted} style={styles.stepCounter}>
-            {currentStep + 1} / {TOTAL_STEPS}
-          </ThemedText>
         </View>
 
-        {/* Steps */}
+        {/* Steps FlatList */}
         <FlatList
           ref={scrollRef}
           data={Array.from({ length: TOTAL_STEPS }, (_, i) => i)}
@@ -556,25 +645,22 @@ export default function OnboardingScreen() {
           })}
         />
 
-        {/* Navigation */}
+        {/* Continue button */}
         <View style={styles.navigation}>
-          {currentStep > 0 ? (
-            <Pressable style={styles.backButton} onPress={goBack}>
-              <Ionicons name="arrow-back" size={24} color={theme.text} />
-            </Pressable>
-          ) : (
-            <View style={styles.placeholder} />
-          )}
-          
-          <Button
-            title={currentStep === TOTAL_STEPS - 1 ? "Let's Go!" : 'Continue'}
+          <Pressable
+            style={[
+              styles.continueButton,
+              {
+                backgroundColor: canProceed() ? Colors.olive : theme.border,
+              },
+            ]}
             onPress={goNext}
-            disabled={!canProceed()}
-            loading={isSubmitting}
-            variant="primary"
-            size="large"
-            style={styles.nextButton}
-          />
+            disabled={!canProceed() || isSubmitting}
+          >
+            <ThemedText variant="button" color={canProceed() ? 'white' : theme.textMuted}>
+              Continue
+            </ThemedText>
+          </Pressable>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -601,138 +687,163 @@ const styles = StyleSheet.create({
   keyboardView: {
     flex: 1,
   },
-  progressContainer: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.md,
+    gap: Spacing.md,
+  },
+  backButton: {
+    padding: Spacing.xs,
+  },
+  progressSection: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  progressLabel: {
+    marginBottom: Spacing.xs,
+    letterSpacing: 0.5,
   },
   progressTrack: {
-    flex: 1,
-    height: 4,
-    borderRadius: 2,
+    width: '100%',
+    height: 6,
+    borderRadius: 3,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    borderRadius: 2,
-  },
-  stepCounter: {
-    marginLeft: Spacing.md,
-    minWidth: 40,
-    textAlign: 'right',
+    borderRadius: 3,
   },
   stepContainer: {
     width: SCREEN_WIDTH,
   },
   stepContent: {
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing['3xl'],
-    paddingBottom: Spacing['4xl'],
+    paddingTop: Spacing.xl,
+    paddingBottom: Spacing['5xl'],
   },
   stepTitle: {
     marginBottom: Spacing.md,
+    fontSize: 28,
+    lineHeight: 36,
   },
   stepSubtitle: {
     marginBottom: Spacing.xl,
+    lineHeight: 22,
   },
-  textInput: {
-    fontSize: 24,
-    paddingVertical: Spacing.base,
-    borderBottomWidth: 2,
-    fontFamily: 'Inter_500Medium',
-  },
-  inputWithUnit: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  inputFlex: {
-    flex: 1,
-  },
-  unitLabel: {
-    marginLeft: Spacing.md,
-  },
-  optionsGrid: {
+  // Gender selection
+  genderGrid: {
     flexDirection: 'row',
     gap: Spacing.md,
+    marginTop: Spacing.md,
   },
-  optionCard: {
+  genderCard: {
     flex: 1,
-    padding: Spacing.xl,
     borderRadius: BorderRadius.lg,
-    borderWidth: 2,
+    padding: Spacing.xl,
     alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  optionsStack: {
     gap: Spacing.md,
   },
-  optionRow: {
-    padding: Spacing.base,
-    borderRadius: BorderRadius.md,
-    borderWidth: 2,
+  genderImage: {
+    width: 100,
+    height: 130,
   },
+  // Archetype grid
   archetypeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.md,
+    justifyContent: 'center',
   },
   archetypeCard: {
-    width: (SCREEN_WIDTH - Spacing.xl * 2 - Spacing.md) / 2,
-    padding: Spacing.base,
     borderRadius: BorderRadius.lg,
-    borderWidth: 2,
+    padding: Spacing.base,
     alignItems: 'center',
   },
-  archetypeIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+  archetypeImageContainer: {
+    width: 80,
+    height: 80,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: Spacing.sm,
   },
+  archetypeImage: {
+    width: 80,
+    height: 80,
+  },
   archetypeName: {
     marginBottom: Spacing.xs,
   },
-  archetypeMacros: {
+  archetypeBadge: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.sm,
+    marginBottom: Spacing.sm,
+  },
+  archetypeDesc: {
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  macroExpanded: {
+    marginTop: Spacing.md,
+    gap: Spacing.xs,
+    width: '100%',
+  },
+  macroRow: {
+    paddingVertical: 2,
+  },
+  doubleTapHint: {
     marginTop: Spacing.sm,
+    fontStyle: 'italic',
   },
-  celebrationIcon: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-    alignSelf: 'center',
-    marginBottom: Spacing.xl,
+  // Body stats
+  fieldGroup: {
+    marginBottom: Spacing.base,
   },
-  notificationOptions: {
+  fieldLabel: {
+    marginBottom: Spacing.sm,
+  },
+  fieldRow: {
     flexDirection: 'row',
     gap: Spacing.md,
   },
-  notificationCard: {
-    flex: 1,
+  textInput: {
+    fontSize: 16,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.base,
+    borderWidth: 1,
+    borderRadius: BorderRadius.md,
+    fontFamily: 'Inter_500Medium',
+  },
+  activityGrid: {
+    gap: Spacing.sm,
+  },
+  activityChip: {
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.base,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+  },
+  // Goal
+  goalStack: {
+    gap: Spacing.md,
+  },
+  goalCard: {
     padding: Spacing.xl,
     borderRadius: BorderRadius.lg,
     borderWidth: 2,
-    alignItems: 'center',
-    gap: Spacing.sm,
+    gap: Spacing.xs,
   },
+  // Navigation
   navigation: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.xl,
+    paddingVertical: Spacing.base,
+    paddingBottom: Spacing.xl,
   },
-  backButton: {
-    padding: Spacing.md,
-  },
-  placeholder: {
-    width: 48,
-  },
-  nextButton: {
-    flex: 1,
-    marginLeft: Spacing.md,
+  continueButton: {
+    paddingVertical: Spacing.base,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
   },
 });
