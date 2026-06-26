@@ -28,6 +28,9 @@ const SCAN_KEYS: KeyState[] = [
   mkKey(process.env.EXPO_PUBLIC_GROQ_API_KEY_1),
   mkKey(process.env.EXPO_PUBLIC_GROQ_API_KEY_2),
   mkKey(process.env.EXPO_PUBLIC_GROQ_API_KEY_3),
+  mkKey(process.env.EXPO_PUBLIC_GROQ_API_KEY_4),
+  mkKey(process.env.EXPO_PUBLIC_GROQ_API_KEY_5),
+  mkKey(process.env.EXPO_PUBLIC_GROQ_API_KEY_6),
 ];
 
 let lastCoachIndex = -1;

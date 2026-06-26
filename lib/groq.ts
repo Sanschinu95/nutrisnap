@@ -10,6 +10,9 @@ const GROQ_API_KEYS = [
   process.env.EXPO_PUBLIC_GROQ_API_KEY_1,
   process.env.EXPO_PUBLIC_GROQ_API_KEY_2,
   process.env.EXPO_PUBLIC_GROQ_API_KEY_3,
+  process.env.EXPO_PUBLIC_GROQ_API_KEY_4,
+  process.env.EXPO_PUBLIC_GROQ_API_KEY_5,
+  process.env.EXPO_PUBLIC_GROQ_API_KEY_6,
 ].filter(Boolean) as string[];
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
