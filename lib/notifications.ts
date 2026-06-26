@@ -7,6 +7,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { ArchetypeKey } from '@/types/archetype';
 import { STREAK_MILESTONES } from '@/constants/archetypeProgress';
+import { trackEvent } from './telemetry';
 
 // ─── Notification Channel IDs ───────────────────────────────────
 export const NOTIFICATION_CHANNELS = {
@@ -15,6 +16,16 @@ export const NOTIFICATION_CHANNELS = {
   GOAL_HIT: 'goal-hit',
   STREAK: 'streak',
   PROGRESS: 'progress',
+} as const;
+
+export const NOTIFICATION_CATEGORIES = {
+  HYDRATION_QUICK_ADD: 'hydration-quick-add',
+} as const;
+
+export const HYDRATION_ACTIONS = {
+  ADD_250: 'hydration-add-250',
+  ADD_500: 'hydration-add-500',
+  OTHER: 'hydration-other',
 } as const;
 
 // ─── Archetype Notification Messages ────────────────────────────
@@ -162,6 +173,24 @@ export async function initializeNotifications(): Promise<boolean> {
     });
   }
 
+  await Notifications.setNotificationCategoryAsync(NOTIFICATION_CATEGORIES.HYDRATION_QUICK_ADD, [
+    {
+      identifier: HYDRATION_ACTIONS.ADD_250,
+      buttonTitle: '+250ml',
+      options: { opensAppToForeground: false },
+    },
+    {
+      identifier: HYDRATION_ACTIONS.ADD_500,
+      buttonTitle: '+500ml',
+      options: { opensAppToForeground: false },
+    },
+    {
+      identifier: HYDRATION_ACTIONS.OTHER,
+      buttonTitle: 'Other',
+      options: { opensAppToForeground: true },
+    },
+  ]);
+
   // Request permissions
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
@@ -228,6 +257,7 @@ export async function scheduleWaterReminders(): Promise<string[]> {
       content: {
         title: '💧 Water Reminder',
         body: `Stay hydrated! Drink a glass of water.`,
+        categoryIdentifier: NOTIFICATION_CATEGORIES.HYDRATION_QUICK_ADD,
         data: { type: 'water_reminder', hour },
         ...(Platform.OS === 'android' && {
           channelId: NOTIFICATION_CHANNELS.WATER_REMINDER,
@@ -383,6 +413,25 @@ export async function cancelWaterReminders(): Promise<void> {
 
 export async function cancelAllNotifications(): Promise<void> {
   await Notifications.cancelAllScheduledNotificationsAsync();
+}
+
+export function registerNotificationTelemetryListeners(): () => void {
+  const received = Notifications.addNotificationReceivedListener((notification) => {
+    trackEvent('notification_received', {
+      type: notification.request.content.data?.type ?? 'unknown',
+    });
+  });
+  const opened = Notifications.addNotificationResponseReceivedListener((response) => {
+    trackEvent('notification_opened', {
+      type: response.notification.request.content.data?.type ?? 'unknown',
+      actionIdentifier: response.actionIdentifier,
+    });
+  });
+
+  return () => {
+    received.remove();
+    opened.remove();
+  };
 }
 
 // ─── Permission Check ───────────────────────────────────────────

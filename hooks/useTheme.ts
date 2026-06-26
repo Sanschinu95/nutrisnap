@@ -1,9 +1,8 @@
 /**
- * Theme hook for dark/light mode support
+ * Theme hook for V1 light-only design.
  */
 
-import { useColorScheme } from 'react-native';
-import { lightTheme, darkTheme, type Theme } from '@/constants/theme';
+import { lightTheme, type Theme } from '@/constants/theme';
 
 export interface UseThemeReturn {
   theme: Theme;
@@ -12,15 +11,10 @@ export interface UseThemeReturn {
 }
 
 export function useTheme(): UseThemeReturn {
-  const systemColorScheme = useColorScheme();
-  const colorScheme: 'light' | 'dark' = systemColorScheme === 'dark' ? 'dark' : 'light';
-  const isDark = colorScheme === 'dark';
-  const theme = isDark ? darkTheme : lightTheme;
-
   return {
-    theme,
-    isDark,
-    colorScheme,
+    theme: lightTheme,
+    isDark: false,
+    colorScheme: 'light',
   };
 }
 

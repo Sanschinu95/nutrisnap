@@ -245,7 +245,7 @@ export default function DietScreen() {
         <Animated.View entering={FadeInDown.delay(500).springify()} style={styles.bannerSection}>
           <View style={[styles.banner, { backgroundColor: Colors.olive + '15' }]}>
             <ThemedText variant="bodyMedium" color={Colors.olive}>
-              🌱 Fuel your transformation.
+              Your preferences help NutriSnap stay useful and calm.
             </ThemedText>
           </View>
         </Animated.View>

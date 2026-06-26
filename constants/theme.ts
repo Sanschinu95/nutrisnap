@@ -4,51 +4,40 @@
  */
 
 export const Colors = {
-  // Light mode
-  background: '#F5F0E8',
-  card: '#EDE6D6',
-  border: '#E0D5C5',
-  brown: '#3D2B1F',
-  brownMid: '#6B4C3B',
-  muted: '#9E8A78',
-  olive: '#5D7A3E',
-  oliveMid: '#7A9E54',
-  oliveLight: '#C8DBA8',
+  background: '#F8F7F4',
+  card: '#FFFFFF',
+  border: '#ECE6DE',
+  brown: '#2F241E',
+  brownMid: '#7A726A',
+  muted: '#7A726A',
+  olive: '#4CAF50',
+  oliveMid: '#66BB6A',
+  oliveLight: '#E8F5E9',
   orange: '#E8703A',
-  orangeLight: '#F5C4A8',
-  orangePale: '#FDF0E8',
-  yellow: '#E8C13A',
-  yellowLight: '#FAF0C0',
+  orangeLight: '#F7D4C3',
+  orangePale: '#FFF1EA',
+  blue: '#4D8EFF',
+  blueLight: '#DCEAFF',
+  yellow: '#F2B84B',
+  yellowLight: '#FFF2D4',
   error: '#C0392B',
   errorLight: '#FADBD8',
   white: '#FFFFFF',
-
-  // Dark mode
-  darkBg: '#1C1410',
-  darkCard: '#2C1F16',
-  darkCardMid: '#3D2B1F',
-  darkText: '#F0E8D8',
-  darkMuted: '#9E8A78',
-} as const;
-
-export const ArchetypeColors = {
-  wolf: { primary: '#1A1A2E', accent: '#E94560', bg: '#0F0F1A' },
-  bear: { primary: '#7B3F00', accent: '#FFB347', bg: '#2A1500' },
-  lion: { primary: '#8B4513', accent: '#FFD700', bg: '#2C1810' },
-  deer: { primary: '#2D5A27', accent: '#90EE90', bg: '#0D1A0D' },
-  tigress: { primary: '#6B1414', accent: '#FF6B6B', bg: '#1A0A0A' },
-  phoenix: { primary: '#8B2500', accent: '#FFD700', bg: '#1A0D00' },
-  doe: { primary: '#2E5E2E', accent: '#98FB98', bg: '#0D1A0D' },
-  swan: { primary: '#1B6B5A', accent: '#A0E8D5', bg: '#0D1A17' },
+  // Chart-specific colors (scoped to NutritionRouteChart only)
+  routePink: '#E0397A',
+  routePinkLight: 'rgba(224,57,122,0.15)',
+  chartBlue: '#3D8BFF',
+  chartBlueLight: 'rgba(61,139,255,0.15)',
+  chartGrid: '#E8E4E0',
 } as const;
 
 export const Shadows = {
   card: {
-    shadowColor: '#3D2B1F',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 3,
+    shadowColor: '#2F241E',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    elevation: 2,
   },
   fab: {
     shadowColor: '#E8703A',
@@ -89,6 +78,9 @@ export const Typography = {
     body: 'Inter_400Regular',
     bodyMedium: 'Inter_500Medium',
     bodySemiBold: 'Inter_600SemiBold',
+    serif: 'Fraunces_500Medium',
+    serifSemi: 'Fraunces_600SemiBold',
+    serifBold: 'Fraunces_700Bold',
   },
   sizes: {
     xs: 10,
@@ -129,7 +121,6 @@ export type Theme = {
   white: string;
 };
 
-// Theme object for light/dark mode
 export const lightTheme: Theme = {
   background: Colors.background,
   card: Colors.card,
@@ -151,12 +142,13 @@ export const lightTheme: Theme = {
 };
 
 export const darkTheme: Theme = {
-  background: Colors.darkBg,
-  card: Colors.darkCard,
-  border: Colors.darkCardMid,
-  text: Colors.darkText,
-  textSecondary: Colors.darkText,
-  textMuted: Colors.darkMuted,
+  ...lightTheme,
+  background: Colors.background,
+  card: Colors.card,
+  border: Colors.border,
+  text: Colors.brown,
+  textSecondary: Colors.brownMid,
+  textMuted: Colors.muted,
   primary: Colors.olive,
   primaryMid: Colors.oliveMid,
   primaryLight: Colors.oliveLight,

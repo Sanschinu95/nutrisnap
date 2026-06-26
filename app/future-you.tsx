@@ -1,120 +1,46 @@
-/**
- * Plan Reveal / Future-You Screen — Post-onboarding
- * Inspired by: assets/UI mockups/plan.png
- * Shows: archetype circle with all 4 animal images, macro grid, "Enter NutriSnap" CTA
- */
-
-import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Dimensions, Pressable, Image } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withDelay,
-  withSpring,
-  Easing,
   FadeInDown,
-  FadeIn,
+  Easing,
   runOnJS,
   useAnimatedReaction,
+  useSharedValue,
+  withDelay,
+  withTiming,
 } from 'react-native-reanimated';
 import { ThemedText } from '@/components/ui/ThemedText';
-import { useTheme } from '@/hooks/useTheme';
 import { useUserStore } from '@/stores/user.store';
-import { ARCHETYPES, type ArchetypeKey } from '@/constants/archetypes';
-import { ArchetypeColors, Spacing, BorderRadius, Colors } from '@/constants/theme';
+import { BorderRadius, Colors, Spacing } from '@/constants/theme';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-const ARCHETYPE_IMAGES: Record<string, any> = {
-  wolf: require('@/assets/archetypes/wolf.png'),
-  bear: require('@/assets/archetypes/bear.png'),
-  lion: require('@/assets/archetypes/lion.png'),
-  deer: require('@/assets/archetypes/deer.png'),
-  tigress: require('@/assets/archetypes/tigress.png'),
-  phoenix: require('@/assets/archetypes/phoenix.png'),
-  doe: require('@/assets/archetypes/doe.png'),
-  swan: require('@/assets/archetypes/swan.png'),
-};
-
-const MALE_ARCHETYPES: ArchetypeKey[] = ['wolf', 'bear', 'lion', 'deer'];
-const FEMALE_ARCHETYPES: ArchetypeKey[] = ['tigress', 'phoenix', 'doe', 'swan'];
-
-/** Animated count-up text component */
-function CountUp({
-  target,
-  duration = 1200,
-  delay = 0,
-  suffix = '',
-  color,
-  style,
-}: {
-  target: number;
-  duration?: number;
-  delay?: number;
-  suffix?: string;
-  color: string;
-  style?: any;
-}) {
+function CountUp({ target, suffix = '', delay = 0, color = Colors.brown }: { target: number; suffix?: string; delay?: number; color?: string }) {
   const [displayValue, setDisplayValue] = useState(0);
   const animatedValue = useSharedValue(0);
 
   useEffect(() => {
-    animatedValue.value = withDelay(
-      delay,
-      withTiming(target, { duration, easing: Easing.out(Easing.cubic) })
-    );
-  }, [target, delay, duration, animatedValue]);
+    animatedValue.value = withDelay(delay, withTiming(target, { duration: 900, easing: Easing.out(Easing.cubic) }));
+  }, [animatedValue, delay, target]);
 
   useAnimatedReaction(
     () => Math.round(animatedValue.value),
     (current, previous) => {
-      if (current !== previous) {
-        runOnJS(setDisplayValue)(current);
-      }
+      if (current !== previous) runOnJS(setDisplayValue)(current);
     },
     [animatedValue]
   );
 
-  return (
-    <ThemedText variant="h1" color={color} style={style}>
-      {displayValue}{suffix}
-    </ThemedText>
-  );
+  return <ThemedText variant="h1" color={color}>{displayValue}{suffix}</ThemedText>;
 }
 
 export default function FutureYouScreen() {
-  const { theme } = useTheme();
-  const { calorieGoal, macroGoals, archetype, profile } = useUserStore();
-  const params = useLocalSearchParams<{ archetype?: string }>();
-
-  const selectedArchetype = (params.archetype ?? archetype ?? 'wolf') as ArchetypeKey;
-  const archetypeInfo = ARCHETYPES[selectedArchetype];
-  const colors = ArchetypeColors[selectedArchetype];
-
-  // Determine which set of 4 archetypes to show based on the selected one
-  const isFemale = FEMALE_ARCHETYPES.includes(selectedArchetype);
-  const archetypeSet = isFemale ? FEMALE_ARCHETYPES : MALE_ARCHETYPES;
-
-  // Calculate macro grams
-  const proteinG = macroGoals?.protein ?? Math.round(calorieGoal * archetypeInfo.macros.protein / 4);
-  const carbsG = macroGoals?.carbs ?? Math.round(calorieGoal * archetypeInfo.macros.carbs / 4);
-  const fatG = macroGoals?.fat ?? Math.round(calorieGoal * archetypeInfo.macros.fat / 9);
-
-  // Motivational subtitle based on archetype
-  const subtitleMap: Record<string, string> = {
-    wolf: "Wolves thrive on precision. Let's build lean muscle together.",
-    bear: "Bears dominate with power. Let's fuel your strength.",
-    lion: "Lions lead from the front. Let's command your nutrition.",
-    deer: "Deer run with purpose. Let's build your endurance.",
-    tigress: "Tigresses are fierce and lean. Let's sculpt your power.",
-    phoenix: "Phoenixes rise through transformation. Let's begin yours.",
-    doe: "Does move with grace. Let's nourish your balance.",
-    swan: "Swans glide with elegance. Let's refine your discipline.",
-  };
+  const { calorieGoal, macroGoals, profile } = useUserStore();
+  const protein = macroGoals.protein ?? 0;
+  const carbs = macroGoals.carbs ?? 0;
+  const fat = macroGoals.fat ?? 0;
 
   const handleEnter = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -122,230 +48,116 @@ export default function FutureYouScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Phase indicator */}
-      <Animated.View entering={FadeIn.delay(100).duration(500)} style={styles.phaseHeader}>
-        <ThemedText variant="label" color={theme.textMuted} style={styles.phaseText}>
-          PHASE 6 / 6
+    <SafeAreaView style={styles.container}>
+      <Animated.View entering={FadeInDown.springify()} style={styles.content}>
+        <View style={styles.logoMark}>
+          <Ionicons name="leaf-outline" size={34} color={Colors.olive} />
+        </View>
+        <ThemedText variant="label" color={Colors.muted}>PLAN READY</ThemedText>
+        <ThemedText variant="h1" align="center" style={styles.title}>
+          {profile?.name ? `${profile.name.split(' ')[0]}, your day is set.` : 'Your day is set.'}
         </ThemedText>
-      </Animated.View>
-
-      {/* Title */}
-      <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.titleSection}>
-        <ThemedText variant="h1" align="center" style={styles.heading}>
-          Your Journey Starts{'\n'}Today
+        <ThemedText variant="body" color={Colors.muted} align="center" style={styles.subtitle}>
+          NutriSnap will guide calories, macros, water, and meal rhythm from one calm home screen.
         </ThemedText>
-        <ThemedText variant="body" color={theme.textMuted} align="center" style={styles.subtitle}>
-          {subtitleMap[selectedArchetype] ?? "Let's build your plan together."}
-        </ThemedText>
-      </Animated.View>
 
-      {/* Circular archetype showcase */}
-      <Animated.View entering={FadeInDown.delay(400).springify()} style={styles.circleSection}>
-        <View style={[styles.outerCircle, { borderColor: Colors.olive }]}>
-          <View style={styles.archetypeImagesGrid}>
-            {archetypeSet.map((key, index) => {
-              const isSelected = key === selectedArchetype;
-              return (
-                <View
-                  key={key}
-                  style={[
-                    styles.archetypeThumb,
-                    isSelected && styles.archetypeThumbSelected,
-                  ]}
-                >
-                  <Image
-                    source={ARCHETYPE_IMAGES[key]}
-                    style={[
-                      styles.archetypeThumbImage,
-                      !isSelected && { opacity: 0.6 },
-                    ]}
-                    resizeMode="contain"
-                  />
-                </View>
-              );
-            })}
-          </View>
+        <View style={styles.calorieCard}>
+          <ThemedText variant="label" color={Colors.muted}>DAILY CALORIES</ThemedText>
+          <CountUp target={calorieGoal} color={Colors.olive} />
+          <ThemedText variant="body" color={Colors.muted}>kcal target</ThemedText>
+        </View>
 
-          {/* Mode badge */}
-          <View style={[styles.modeBadge, { backgroundColor: Colors.olive }]}>
-            <ThemedText variant="label" color="white" align="center" style={styles.modeBadgeText}>
-              {archetypeInfo.name.toUpperCase()}{'\n'}MODE
-            </ThemedText>
+        <View style={styles.macroGrid}>
+          <MacroReveal title="Protein" value={protein} color={Colors.olive} delay={150} />
+          <MacroReveal title="Carbs" value={carbs} color={Colors.orange} delay={250} />
+          <MacroReveal title="Fat" value={fat} color={Colors.brownMid} delay={350} />
+          <View style={styles.macroCard}>
+            <ThemedText variant="label" color={Colors.muted}>Water</ThemedText>
+            <ThemedText variant="h1" color={Colors.blue}>2.5L</ThemedText>
           </View>
         </View>
       </Animated.View>
 
-      {/* Macro Grid 2×2 */}
-      <Animated.View entering={FadeInDown.delay(600).springify()} style={styles.macroGrid}>
-        <View style={styles.macroRow}>
-          <View style={styles.macroCell}>
-            <ThemedText variant="label" color={theme.textMuted}>CALORIES</ThemedText>
-            <CountUp target={calorieGoal} delay={700} color={theme.text} style={styles.macroValue} />
-            <ThemedText variant="label" color={theme.textMuted}>kcal</ThemedText>
-          </View>
-          <View style={[styles.macroDividerV, { backgroundColor: theme.border }]} />
-          <View style={styles.macroCell}>
-            <ThemedText variant="label" color={theme.textMuted}>PROTEIN</ThemedText>
-            <CountUp target={proteinG} delay={800} suffix="g" color={Colors.olive} style={styles.macroValue} />
-            <View style={[styles.macroUnderline, { backgroundColor: Colors.olive }]} />
-          </View>
-        </View>
-        <View style={[styles.macroDividerH, { backgroundColor: theme.border }]} />
-        <View style={styles.macroRow}>
-          <View style={styles.macroCell}>
-            <ThemedText variant="label" color={theme.textMuted}>CARBS</ThemedText>
-            <CountUp target={carbsG} delay={900} suffix="g" color={Colors.orange} style={styles.macroValue} />
-            <View style={[styles.macroUnderline, { backgroundColor: Colors.orange }]} />
-          </View>
-          <View style={[styles.macroDividerV, { backgroundColor: theme.border }]} />
-          <View style={styles.macroCell}>
-            <ThemedText variant="label" color={theme.textMuted}>FAT</ThemedText>
-            <CountUp target={fatG} delay={1000} suffix="g" color={Colors.brownMid} style={styles.macroValue} />
-            <View style={[styles.macroUnderline, { backgroundColor: Colors.brownMid }]} />
-          </View>
-        </View>
-      </Animated.View>
-
-      {/* Enter CTA */}
-      <Animated.View entering={FadeInDown.delay(1100).springify()} style={styles.ctaSection}>
-        <Pressable
-          style={[styles.enterButton, { backgroundColor: Colors.orange }]}
-          onPress={handleEnter}
-        >
-          <ThemedText variant="button" color="white" style={styles.enterButtonText}>
-            Enter NutriSnap
-          </ThemedText>
+      <View style={styles.footer}>
+        <Pressable style={styles.enterButton} onPress={handleEnter}>
+          <ThemedText variant="button" color="white">Enter NutriSnap</ThemedText>
         </Pressable>
-        <ThemedText variant="label" color={theme.textMuted} align="center" style={styles.ctaFooter}>
-          Plan ready. Profile optimized.
-        </ThemedText>
-      </Animated.View>
+      </View>
     </SafeAreaView>
+  );
+}
+
+function MacroReveal({ title, value, color, delay }: { title: string; value: number; color: string; delay: number }) {
+  return (
+    <View style={styles.macroCard}>
+      <ThemedText variant="label" color={Colors.muted}>{title}</ThemedText>
+      <CountUp target={value} suffix="g" delay={delay} color={color} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: Colors.background,
   },
-  phaseHeader: {
-    alignItems: 'center',
-    paddingTop: Spacing.base,
-    marginBottom: Spacing.sm,
-  },
-  phaseText: {
-    letterSpacing: 2,
-    fontSize: 12,
-  },
-  titleSection: {
+  content: {
+    flex: 1,
     paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.xl,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: Spacing.lg,
   },
-  heading: {
-    fontSize: 30,
-    lineHeight: 38,
-    marginBottom: Spacing.sm,
+  logoMark: {
+    width: 86,
+    height: 86,
+    borderRadius: 43,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  title: {
+    fontSize: 34,
+    lineHeight: 41,
   },
   subtitle: {
-    maxWidth: 300,
-    alignSelf: 'center',
-    lineHeight: 22,
+    maxWidth: 330,
   },
-  circleSection: {
+  calorieCard: {
+    width: '100%',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.xl,
     alignItems: 'center',
-    marginBottom: Spacing.xl,
-  },
-  outerCircle: {
-    width: SCREEN_WIDTH * 0.6,
-    height: SCREEN_WIDTH * 0.6,
-    borderRadius: SCREEN_WIDTH * 0.3,
-    borderWidth: 3,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  archetypeImagesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    width: SCREEN_WIDTH * 0.45,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 4,
-  },
-  archetypeThumb: {
-    width: SCREEN_WIDTH * 0.18,
-    height: SCREEN_WIDTH * 0.18,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  archetypeThumbSelected: {
-    transform: [{ scale: 1.15 }],
-  },
-  archetypeThumbImage: {
-    width: '90%',
-    height: '90%',
-  },
-  modeBadge: {
-    position: 'absolute',
-    bottom: -14,
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.md,
-  },
-  modeBadgeText: {
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1,
-    lineHeight: 16,
   },
   macroGrid: {
-    marginHorizontal: Spacing.xl,
-    marginBottom: Spacing.xl,
-  },
-  macroRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  macroCell: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: Spacing.base,
-    gap: 2,
-  },
-  macroValue: {
-    fontSize: 28,
-  },
-  macroUnderline: {
-    width: 40,
-    height: 3,
-    borderRadius: 1.5,
-    marginTop: 4,
-  },
-  macroDividerV: {
-    width: 1,
-    height: 60,
-  },
-  macroDividerH: {
-    height: 1,
     width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.md,
   },
-  ctaSection: {
-    paddingHorizontal: Spacing.xl,
-    marginTop: 'auto',
-    paddingBottom: Spacing['2xl'],
+  macroCard: {
+    width: '47.5%',
+    minHeight: 112,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.lg,
+    justifyContent: 'center',
+  },
+  footer: {
+    padding: Spacing.xl,
   },
   enterButton: {
-    paddingVertical: Spacing.base + 2,
+    minHeight: 54,
     borderRadius: BorderRadius.md,
+    backgroundColor: Colors.orange,
     alignItems: 'center',
-  },
-  enterButtonText: {
-    fontSize: 18,
-    letterSpacing: 0.5,
-  },
-  ctaFooter: {
-    marginTop: Spacing.md,
-    fontStyle: 'italic',
+    justifyContent: 'center',
   },
 });

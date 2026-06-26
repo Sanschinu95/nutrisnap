@@ -20,6 +20,17 @@ expo-env.d.ts
 
 # Metro
 .metro-health-check*
+metro.log
+metro-error.log
+
+# Dev screenshots at repo root (referenced nowhere; gathered during share-story dev)
+/instagram-fallback.png
+/instagram-result.png
+/nutrisnap-screen.png
+/share-route.png
+/share-screen.png
+/stats-card.png
+/stats-share.png
 
 # debug
 npm-debug.*

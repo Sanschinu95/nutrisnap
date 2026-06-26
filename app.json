@@ -17,11 +17,15 @@
       "bundleIdentifier": "com.nutrisnap.app",
       "infoPlist": {
         "NSCameraUsageDescription": "NutriSnap needs camera access to scan and analyze your food",
-        "NSPhotoLibraryUsageDescription": "NutriSnap needs photo library access to analyze food photos"
+        "NSPhotoLibraryUsageDescription": "NutriSnap needs photo library access to analyze food photos",
+        "LSApplicationQueriesSchemes": ["instagram-stories"]
       }
     },
     "android": {
       "package": "com.nutrisnap.app",
+      "queries": [
+        { "package": "com.instagram.android" }
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#F5F0E8",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -41,6 +45,7 @@
       "bundler": "metro"
     },
     "plugins": [
+      "./plugins/withInstagramQueries",
       "expo-router",
       "expo-secure-store",
       [
@@ -54,7 +59,16 @@
         {
           "sounds": []
         }
-      ]
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "NutriSnap needs access to your photo library to save story cards",
+          "savePhotosPermission": "NutriSnap needs permission to save your nutrition story cards",
+          "isAccessMediaLocationEnabled": true
+        }
+      ],
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true

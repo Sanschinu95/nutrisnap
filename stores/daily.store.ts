@@ -7,12 +7,13 @@ import { supabase } from '@/lib/supabase';
 import { useAuthStore } from './auth.store';
 import { useUserStore } from './user.store';
 import type { FoodEntry, DailySummary } from '@/types/nutrition';
-import type { FoodEntryInsert } from '@/types/database';
+import type { FoodEntryInsert, FoodItemRow, MealRow } from '@/types/database';
 import {
   checkAndSendProgressNotification,
   sendGoalHitNotification,
   sendStreakNotification,
 } from '@/lib/notifications';
+import { trackEvent } from '@/lib/telemetry';
 
 interface ProgressNotifiedFlags {
   midday?: boolean;
@@ -49,6 +50,54 @@ function getTodayDate(): string {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function getStartOfToday(): Date {
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  return startOfDay;
+}
+
+function toLocalTimestamp(date = new Date()): string {
+  const offsetMs = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 19);
+}
+
+function mealToFoodEntry(meal: MealRow & { food_items?: FoodItemRow[] }): FoodEntry {
+  const foodItems = meal.food_items ?? [];
+  return {
+    id: meal.id,
+    user_id: meal.user_id,
+    occurred_at_local: meal.occurred_at_local,
+    occurred_at_utc: meal.occurred_at_utc,
+    source: meal.source,
+    meal_name: foodItems[0]?.name ?? 'Meal',
+    food_items: foodItems.map((item) => ({
+      id: item.id,
+      meal_id: item.meal_id,
+      name: item.name,
+      quantity: item.grams ? `${item.grams}g` : item.portion_size_tier ?? '1 serving',
+      calories: item.calories,
+      protein_g: item.protein,
+      carbs_g: item.carbs,
+      fat_g: item.fat,
+      fiber_g: 0,
+      confidence: 'medium',
+      portion_size_tier: item.portion_size_tier,
+      grams: item.grams,
+    })),
+    total_calories: meal.total_calories,
+    protein_g: meal.total_protein,
+    carbs_g: meal.total_carbs,
+    fat_g: meal.total_fat,
+    fiber_g: null,
+    image_url: meal.image_url,
+    raw_gemini_response: null,
+    user_corrections: null,
+    user_accepted_without_edit: true,
+    is_cheat_day: false,
+    logged_at: meal.occurred_at_utc,
+  };
 }
 
 // Helper to calculate summary from entries + manual water
@@ -92,17 +141,20 @@ export const useDailyStore = create<DailyStore>((set, get) => ({
       
       const today = getTodayDate();
       
-      // Load entries for today
-      const startOfDay = new Date();
-      startOfDay.setHours(0,0,0,0);
+      const startOfDay = getStartOfToday();
       
-      const [entriesResult, summaryResult] = await Promise.all([
+      const [mealsResult, hydrationResult, summaryResult] = await Promise.all([
         supabase
-          .from('food_entries')
-          .select('*')
+          .from('meals')
+          .select('*, food_items(*)')
           .eq('user_id', user.id)
-          .gte('logged_at', startOfDay.toISOString())
-          .order('logged_at', { ascending: false }),
+          .gte('occurred_at_utc', startOfDay.toISOString())
+          .order('occurred_at_utc', { ascending: false }),
+        supabase
+          .from('hydration_logs')
+          .select('amount_ml')
+          .eq('user_id', user.id)
+          .gte('occurred_at_utc', startOfDay.toISOString()),
         supabase
           .from('daily_summaries')
           .select('*')
@@ -111,10 +163,23 @@ export const useDailyStore = create<DailyStore>((set, get) => ({
           .maybeSingle()
       ]);
 
-      if (entriesResult.error) throw entriesResult.error;
-      
-      const entries = entriesResult.data as FoodEntry[] || [];
-      const waterMl = summaryResult.data?.water_ml || 0;
+      let entries: FoodEntry[] = [];
+      if (!mealsResult.error) {
+        entries = ((mealsResult.data ?? []) as (MealRow & { food_items?: FoodItemRow[] })[]).map(mealToFoodEntry);
+      } else {
+        const entriesResult = await supabase
+          .from('food_entries')
+          .select('*')
+          .eq('user_id', user.id)
+          .gte('logged_at', startOfDay.toISOString())
+          .order('logged_at', { ascending: false });
+        if (entriesResult.error) throw entriesResult.error;
+        entries = entriesResult.data as FoodEntry[] || [];
+      }
+
+      const waterMl = hydrationResult.error
+        ? summaryResult.data?.water_ml || 0
+        : (hydrationResult.data ?? []).reduce((sum, log) => sum + (log.amount_ml ?? 0), 0);
       const isCheatDay = summaryResult.data?.is_cheat_day || false;
 
       const summary = buildSummary(today, user.id, entries, waterMl, isCheatDay);
@@ -144,18 +209,82 @@ export const useDailyStore = create<DailyStore>((set, get) => ({
         user_id: user.id,
       };
 
-      // 1. Insert food entry
-      const { data: insertedEntry, error: insertError } = await supabase
-        .from('food_entries')
-        .insert(fullEntry)
+      const occurredAtUtc = fullEntry.logged_at ?? new Date().toISOString();
+      const mealSource = fullEntry.source ?? 'scan';
+      const { data: insertedMeal, error: mealError } = await supabase
+        .from('meals')
+        .insert({
+          user_id: user.id,
+          occurred_at_local: toLocalTimestamp(new Date(occurredAtUtc)),
+          occurred_at_utc: occurredAtUtc,
+          total_calories: fullEntry.total_calories,
+          total_protein: fullEntry.protein_g ?? 0,
+          total_carbs: fullEntry.carbs_g ?? 0,
+          total_fat: fullEntry.fat_g ?? 0,
+          source: mealSource,
+          image_url: fullEntry.image_url ?? null,
+        })
         .select()
         .single();
 
-      if (insertError) throw insertError;
+      let insertedEntry: FoodEntry;
+      if (!mealError && insertedMeal) {
+        const meal = insertedMeal as MealRow;
+        const { data: insertedItems, error: itemsError } = await supabase
+          .from('food_items')
+          .insert(fullEntry.food_items.map((item) => ({
+            meal_id: meal.id,
+            name: item.name,
+            calories: item.calories,
+            protein: item.protein_g,
+            carbs: item.carbs_g,
+            fat: item.fat_g,
+            portion_size_tier: item.portion_size_tier ?? null,
+            grams: item.grams ?? null,
+          })))
+          .select();
+        if (itemsError) throw itemsError;
+
+        // Manual entries have no AI prediction — skip the contrastive-pair log.
+        if (mealSource === 'scan') {
+          const feedbackType = fullEntry.user_corrections?.length
+            ? 'edited'
+            : fullEntry.user_accepted_without_edit
+              ? 'thumbs_up'
+              : 'thumbs_down';
+          await supabase.from('scan_feedback').insert({
+            meal_id: meal.id,
+            food_item_id: ((insertedItems ?? []) as FoodItemRow[])[0]?.id ?? null,
+            user_id: user.id,
+            raw_model_prediction: fullEntry.raw_gemini_response ?? {},
+            user_corrected_values: fullEntry.user_corrections?.length
+              ? { corrections: fullEntry.user_corrections }
+              : null,
+            feedback_type: feedbackType,
+          });
+        }
+
+        insertedEntry = {
+          ...mealToFoodEntry({ ...meal, food_items: (insertedItems ?? []) as FoodItemRow[] }),
+          meal_name: fullEntry.meal_name,
+          raw_gemini_response: fullEntry.raw_gemini_response ?? null,
+          user_corrections: fullEntry.user_corrections ?? null,
+          user_accepted_without_edit: fullEntry.user_accepted_without_edit,
+          is_cheat_day: fullEntry.is_cheat_day,
+        };
+      } else {
+        const { data: legacyEntry, error: insertError } = await supabase
+          .from('food_entries')
+          .insert(fullEntry)
+          .select()
+          .single();
+        if (insertError) throw insertError;
+        insertedEntry = legacyEntry as FoodEntry;
+      }
 
       // Update local state
       const { entries, waterMl, isCheatDay } = get();
-      const newEntries = [insertedEntry as FoodEntry, ...entries];
+      const newEntries = [insertedEntry, ...entries];
       const today = getTodayDate();
       const newSummary = buildSummary(today, user.id, newEntries, waterMl, isCheatDay);
 
@@ -178,6 +307,7 @@ export const useDailyStore = create<DailyStore>((set, get) => ({
         summary: newSummary,
         isLoading: false,
       });
+      await trackEvent('scan_completed', { item_count: insertedEntry.food_items.length });
 
       // ─── Progress tracking & notifications ────────────────
       try {
@@ -226,12 +356,18 @@ export const useDailyStore = create<DailyStore>((set, get) => ({
       const user = useAuthStore.getState().user;
       if (!user) throw new Error('Not logged in');
 
-      const { error } = await supabase
-        .from('food_entries')
+      const mealDelete = await supabase
+        .from('meals')
         .delete()
         .eq('id', id);
 
-      if (error) throw error;
+      if (mealDelete.error) {
+        const { error } = await supabase
+          .from('food_entries')
+          .delete()
+          .eq('id', id);
+        if (error) throw error;
+      }
 
       const { entries, waterMl, isCheatDay } = get();
       const newEntries = entries.filter((e) => e.id !== id);
@@ -292,7 +428,7 @@ export const useDailyStore = create<DailyStore>((set, get) => ({
     try {
       const user = useAuthStore.getState().user;
       if (!user) return;
-      const { summary, waterMl, entries, isCheatDay } = get();
+      const { waterMl, entries, isCheatDay } = get();
       const newWaterMl = waterMl + ml;
 
       set({ waterMl: newWaterMl });
@@ -300,15 +436,29 @@ export const useDailyStore = create<DailyStore>((set, get) => ({
       const today = getTodayDate();
       const newSummary = buildSummary(today, user.id, entries, newWaterMl, isCheatDay);
 
-      await supabase
-        .from('daily_summaries')
-        .upsert({
+      const now = new Date();
+      const hydrationResult = await supabase
+        .from('hydration_logs')
+        .insert({
           user_id: user.id,
-          date: today,
-          water_ml: newWaterMl,
-        }, { onConflict: 'user_id,date' });
+          amount_ml: ml,
+          source: 'in_app',
+          occurred_at_local: toLocalTimestamp(now),
+          occurred_at_utc: now.toISOString(),
+        });
+
+      if (hydrationResult.error) {
+        await supabase
+          .from('daily_summaries')
+          .upsert({
+            user_id: user.id,
+            date: today,
+            water_ml: newWaterMl,
+          }, { onConflict: 'user_id,date' });
+      }
 
       set({ summary: newSummary });
+      await trackEvent('hydration_logged', { amount: ml, source: 'in_app' });
     } catch (e) {
       console.error('Add water error:', e);
     }

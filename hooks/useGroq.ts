@@ -1,25 +1,25 @@
 /**
- * Gemini hook for food analysis
+ * Groq hook for food analysis
  */
 
 import { useState, useCallback } from 'react';
-import { analyzeFoodWithRetry, isGeminiError, type ImageData } from '@/lib/gemini';
+import { analyzeFoodWithRetry, isGroqError, type ImageData } from '@/lib/groq';
 import { uploadFoodImage } from '@/lib/cloudinary';
 import { useAuthStore } from '@/stores/auth.store';
-import type { NutritionEntry, GeminiErrorResponse } from '@/types/nutrition';
+import type { NutritionEntry, GroqErrorResponse } from '@/types/nutrition';
 
-interface UseGeminiReturn {
+interface UseGroqReturn {
   isAnalyzing: boolean;
   result: (NutritionEntry & { image_url?: string }) | null;
-  error: GeminiErrorResponse | null;
+  error: GroqErrorResponse | null;
   analyze: (image: ImageData, imageUri: string) => Promise<(NutritionEntry & { image_url?: string }) | null>;
   reset: () => void;
 }
 
-export function useGemini(): UseGeminiReturn {
+export function useGroq(): UseGroqReturn {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<(NutritionEntry & { image_url?: string }) | null>(null);
-  const [error, setError] = useState<GeminiErrorResponse | null>(null);
+  const [error, setError] = useState<GroqErrorResponse | null>(null);
 
   const analyze = useCallback(async (image: ImageData, imageUri: string): Promise<(NutritionEntry & { image_url?: string }) | null> => {
     setIsAnalyzing(true);
@@ -28,11 +28,15 @@ export function useGemini(): UseGeminiReturn {
 
     try {
       const user = useAuthStore.getState().user;
-      
-      const uploadPromise = user ? uploadFoodImage(imageUri, user.id).catch(e => {
+
+      // Always attempt Cloudinary upload — use 'pending' as placeholder
+      // if the user hasn't authenticated yet. The upload itself only needs
+      // a Cloudinary preset, not a Supabase session.
+      const uploadUserId = user?.id ?? 'pending';
+      const uploadPromise = uploadFoodImage(imageUri, uploadUserId).catch(e => {
         console.error('Cloudinary upload failed:', e);
-        return null; // fallback gracefully if upload fails
-      }) : Promise.resolve(null);
+        return null;
+      });
 
       const analyzePromise = analyzeFoodWithRetry(image);
 
@@ -41,7 +45,7 @@ export function useGemini(): UseGeminiReturn {
         analyzePromise,
       ]);
 
-      if (isGeminiError(response)) {
+      if (isGroqError(response)) {
         setError(response);
         setIsAnalyzing(false);
         return null;
@@ -52,7 +56,7 @@ export function useGemini(): UseGeminiReturn {
       setIsAnalyzing(false);
       return finalResult;
     } catch (e) {
-      const errorResponse: GeminiErrorResponse = {
+      const errorResponse: GroqErrorResponse = {
         error: 'network_error',
         message: e instanceof Error ? e.message : 'Unknown error',
       };

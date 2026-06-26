@@ -1,11 +1,14 @@
 /**
  * Authentication store using Zustand + Supabase
- * Handles sign-up, sign-in, sign-out, and session hydration
+ * Handles sign-up, sign-in, sign-out, session hydration,
+ * and the auth-gate system for lazy sign-up flows.
  */
 
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import type { Session, User } from '@supabase/supabase-js';
+
+type PendingAction = () => Promise<void>;
 
 interface AuthState {
   session: Session | null;
@@ -13,6 +16,10 @@ interface AuthState {
   isLoading: boolean;
   isInitialized: boolean;
   error: string | null;
+  /** Whether the auth-gate modal is visible */
+  showAuthGate: boolean;
+  /** Action to replay after successful authentication */
+  pendingAction: PendingAction | null;
 }
 
 interface AuthActions {
@@ -20,16 +27,24 @@ interface AuthActions {
   signInWithGoogle: (idToken: string) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
   clearError: () => void;
+  /** Show the auth-gate modal and queue an action to replay after sign-in */
+  openAuthGate: (action?: PendingAction) => void;
+  /** Close the auth-gate modal and discard the pending action */
+  closeAuthGate: () => void;
+  /** Execute and clear the pending action (called after successful sign-in) */
+  executePendingAction: () => Promise<void>;
 }
 
 type AuthStore = AuthState & AuthActions;
 
-export const useAuthStore = create<AuthStore>((set) => ({
+export const useAuthStore = create<AuthStore>((set, get) => ({
   session: null,
   user: null,
   isLoading: true,
   isInitialized: false,
   error: null,
+  showAuthGate: false,
+  pendingAction: null,
 
   initialize: async () => {
     try {
@@ -106,4 +121,24 @@ export const useAuthStore = create<AuthStore>((set) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  openAuthGate: (action?: PendingAction) => {
+    set({ showAuthGate: true, pendingAction: action ?? null });
+  },
+
+  closeAuthGate: () => {
+    set({ showAuthGate: false, pendingAction: null });
+  },
+
+  executePendingAction: async () => {
+    const { pendingAction } = get();
+    if (pendingAction) {
+      set({ pendingAction: null });
+      try {
+        await pendingAction();
+      } catch (error) {
+        console.warn('Pending action failed after auth:', error);
+      }
+    }
+  },
 }));

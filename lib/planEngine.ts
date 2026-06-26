@@ -4,9 +4,10 @@
  * Takes user profile -> returns a complete PersonalizedPlan
  */
 
-import { ARCHETYPE_MACROS, type ArchetypeKey } from '@/constants/archetypes';
+import type { ArchetypeKey } from '@/constants/archetypes';
 import { FOOD_DATABASE, type FoodData } from './foodDatabase';
 import type { GoalType } from '@/types/archetype';
+import { calculateNutritionTargets, mapOnboardingActivityToTier } from './nutritionEngine';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -65,19 +66,6 @@ export interface PersonalizedPlan {
 }
 
 // ─── Constants ───────────────────────────────────────────────
-
-const ACTIVITY_MULTIPLIERS: Record<ActivityLevel, number> = {
-  sedentary: 1.2,
-  light: 1.375,
-  active: 1.55,
-  very_active: 1.725,
-};
-
-const GOAL_ADJUSTMENTS: Record<GoalType, number> = {
-  cut: -400,
-  maintain: 0,
-  bulk: 300,
-};
 
 // Meal calorie distribution
 const MEAL_DISTRIBUTION = {
@@ -144,13 +132,6 @@ const YOGA_EXERCISES: Exercise[] = [
 ];
 
 // ─── TDEE Calculation ────────────────────────────────────────
-
-function calculateBMR(weight: number, height: number, age: number, sex: 'male' | 'female'): number {
-  if (sex === 'male') {
-    return 10 * weight + 6.25 * height - 5 * age + 5;
-  }
-  return 10 * weight + 6.25 * height - 5 * age - 161;
-}
 
 // ─── Meal Builder ────────────────────────────────────────────
 
@@ -294,18 +275,24 @@ function buildWorkoutPlan(goalType: GoalType, archetype: ArchetypeKey): WorkoutD
 // ─── Main Engine ─────────────────────────────────────────────
 
 export function generatePlan(input: PlanEngineInput): PersonalizedPlan {
-  // 1. Calculate TDEE
-  const bmr = calculateBMR(input.weight_kg, input.height_cm, input.age, input.sex);
-  const tdee = Math.round(bmr * ACTIVITY_MULTIPLIERS[input.activity_level]);
-  const dailyCalories = Math.max(1200, tdee + GOAL_ADJUSTMENTS[input.goal_type]);
+  const activityLevelMap: Record<ActivityLevel, number> = {
+    sedentary: 1,
+    light: 1,
+    active: 2,
+    very_active: 3,
+  };
+  const targets = calculateNutritionTargets({
+    age: input.age,
+    current_weight_kg: input.weight_kg,
+    height_cm: input.height_cm,
+    sex: input.sex,
+    goal_type: input.goal_type,
+    activity_tier: mapOnboardingActivityToTier(activityLevelMap[input.activity_level]),
+  });
+  const dailyCalories = targets.calorie_target;
+  const { protein_g, carbs_g, fat_g } = targets.macros;
 
-  // 2. Calculate macros from archetype splits
-  const macroSplit = ARCHETYPE_MACROS[input.archetype];
-  const protein_g = Math.round((dailyCalories * macroSplit.protein) / 4);
-  const carbs_g = Math.round((dailyCalories * macroSplit.carbs) / 4);
-  const fat_g = Math.round((dailyCalories * macroSplit.fat) / 9);
-
-  // 3. Build meal plan
+  // 2. Build meal plan
   const mealTypes = ['breakfast', 'lunch', 'snack', 'dinner'] as const;
   const meals: Record<string, MealSlot> = {};
 
@@ -320,7 +307,7 @@ export function generatePlan(input: PlanEngineInput): PersonalizedPlan {
     );
   }
 
-  // 4. Build workout plan
+  // 3. Build workout plan
   const workout_plan = buildWorkoutPlan(input.goal_type, input.archetype);
 
   return {
