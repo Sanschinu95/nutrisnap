@@ -92,7 +92,7 @@ function mealToFoodEntry(meal: MealRow & { food_items?: FoodItemRow[] }): FoodEn
     fat_g: meal.total_fat,
     fiber_g: null,
     image_url: meal.image_url,
-    raw_gemini_response: null,
+    raw_ai_response: null,
     user_corrections: null,
     user_accepted_without_edit: true,
     is_cheat_day: false,
@@ -256,7 +256,7 @@ export const useDailyStore = create<DailyStore>((set, get) => ({
             meal_id: meal.id,
             food_item_id: ((insertedItems ?? []) as FoodItemRow[])[0]?.id ?? null,
             user_id: user.id,
-            raw_model_prediction: fullEntry.raw_gemini_response ?? {},
+            raw_model_prediction: fullEntry.raw_ai_response ?? {},
             user_corrected_values: fullEntry.user_corrections?.length
               ? { corrections: fullEntry.user_corrections }
               : null,
@@ -267,7 +267,7 @@ export const useDailyStore = create<DailyStore>((set, get) => ({
         insertedEntry = {
           ...mealToFoodEntry({ ...meal, food_items: (insertedItems ?? []) as FoodItemRow[] }),
           meal_name: fullEntry.meal_name,
-          raw_gemini_response: fullEntry.raw_gemini_response ?? null,
+          raw_ai_response: fullEntry.raw_ai_response ?? null,
           user_corrections: fullEntry.user_corrections ?? null,
           user_accepted_without_edit: fullEntry.user_accepted_without_edit,
           is_cheat_day: fullEntry.is_cheat_day,

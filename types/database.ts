@@ -284,7 +284,7 @@ export interface FoodEntryRow {
   fat_g: number | null;
   fiber_g: number | null;
   image_url: string | null;
-  raw_gemini_response: NutritionEntry | null;
+  raw_ai_response: NutritionEntry | null;
   user_corrections: UserCorrection[] | null;
   user_accepted_without_edit: boolean;
   is_cheat_day: boolean;

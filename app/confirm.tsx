@@ -114,7 +114,7 @@ export default function ConfirmScreen() {
           fat_g: nutritionData.total_fat_g,
           fiber_g: nutritionData.food_items.reduce((sum, item) => sum + item.fiber_g, 0),
           image_url: (nutritionData as any).image_url || null,
-          raw_gemini_response: isManual ? null : originalData,
+          raw_ai_response: isManual ? null : originalData,
           user_corrections: corrections.length > 0 || feedback === 'incorrect' ? corrections : null,
           user_accepted_without_edit: feedback !== 'incorrect' && corrections.length === 0,
           is_cheat_day: false,
