@@ -64,10 +64,22 @@ export async function deleteAccountData(
   // model training without retaining personal data.
   await supabase.rpc('anonymize_scan_feedback_for_user', { target_user_id: userId });
 
+  // De-identify the decoupled training_data rows the same way. The table's RLS
+  // blocks direct user UPDATEs, so we call the SECURITY DEFINER RPC defined in
+  // docs/migration_training_data.sql, which sets contributor_id = null for the
+  // caller's own rows. Wrapped: failure here must not block account deletion.
+  try {
+    await supabase.rpc('nullify_training_for_self');
+  } catch (e) {
+    console.warn('nullify_training_for_self failed:', e);
+  }
+
   // Cascades to meals → food_items, hydration_logs, streaks, vacation_periods,
   // consistency_scores via the ON DELETE CASCADE FKs in
   // docs/migration_v1_core_engine.sql. The auth.users row is NOT deleted here —
   // that requires the service role key and should be wired up server-side.
+  // training_data is intentionally NOT cascaded — it has no FK and the rows
+  // persist post-deletion in de-identified form for ML training.
   const { error } = await supabase.from('profiles').delete().eq('id', userId);
   if (error) throw error;
 }

@@ -1,603 +1,513 @@
-/**
- * Confirm screen - Review and edit nutrition data before saving
- */
-
-import { useState, useCallback, useEffect } from 'react';
-import {
-  View,
-  StyleSheet,
-  ScrollView,
-  TextInput,
-  Pressable,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { ThemedText } from '@/components/ui/ThemedText';
-import { Card } from '@/components/ui/Card';
+import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
-import { ProgressRing } from '@/components/ui/ProgressRing';
-import { MacroPillRow } from '@/components/ui/MacroPill';
-import { useTheme } from '@/hooks/useTheme';
+import { ThemedText } from '@/components/ui/ThemedText';
 import { useDailyStore } from '@/stores/daily.store';
 import { useUserStore } from '@/stores/user.store';
-import { Spacing, Colors, BorderRadius } from '@/constants/theme';
-import type { NutritionEntry, FoodItem, UserCorrection } from '@/types/nutrition';
-import type { ArchetypeKey } from '@/constants/archetypes';
+import { useAuthGate } from '@/hooks/useAuthGate';
+import { BorderRadius, Colors, Spacing } from '@/constants/theme';
+import type { FoodItem, MealSource, NutritionEntry, UserCorrection } from '@/types/nutrition';
+import { collectTrainingData } from '@/lib/datasetCollector';
 
-const SCAN_FEEDBACK: Record<ArchetypeKey, string[]> = {
-  wolf: ['Strong fuel for the hunt.', 'Keep the protein sharp.'],
-  bear: ['Steady energy for strength.', 'Balanced fuel builds power.'],
-  lion: ['A disciplined choice.', 'Lead the day with control.'],
-  deer: ['Light, sustainable momentum.', 'Simple fuel can carry you far.'],
-  tigress: ['Excellent fuel for strength.', 'Stay fierce and fed.'],
-  phoenix: ['High energy meal.', 'Keep rising.'],
-  doe: ['Simple and sustainable.', 'Gentle progress still counts.'],
-  swan: ['Balanced nutrition choice.', 'Elegance is consistency.'],
-};
-
-function getScanFeedback(archetype: ArchetypeKey | null, data: NutritionEntry): string {
-  if (!archetype) return "Today's choices build tomorrow's results.";
-
-  const proteinRatio = data.total_calories > 0
-    ? (data.total_protein_g * 4) / data.total_calories
-    : 0;
-  const base = SCAN_FEEDBACK[archetype][0];
-
-  if (proteinRatio < 0.22) {
-    return `${base} Add 15g more protein for stronger recovery.`;
-  }
-
-  if (data.total_calories >= 650) {
-    return `${base} Strong energy for the next stretch.`;
-  }
-
-  return `${base} ${SCAN_FEEDBACK[archetype][1]}`;
-}
+type FeedbackState = 'correct' | 'incorrect' | null;
 
 export default function ConfirmScreen() {
-  const { theme } = useTheme();
-  const params = useLocalSearchParams<{ data: string }>();
-  const { addEntry, summary } = useDailyStore();
-  const { calorieGoal, macroGoals, updateStreak, archetype } = useUserStore();
-
+  const params = useLocalSearchParams<{ data: string; feedback?: string }>();
+  const { addEntry, removeEntry, summary } = useDailyStore();
+  const { calorieGoal, updateStreak } = useUserStore();
+  const { requireAuth } = useAuthGate();
   const [nutritionData, setNutritionData] = useState<NutritionEntry | null>(null);
   const [originalData, setOriginalData] = useState<NutritionEntry | null>(null);
-  const [isCheatDay, setIsCheatDay] = useState(false);
+  const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
+  const source: MealSource = ((nutritionData as any)?.source ?? 'scan') as MealSource;
+  const isManual = source === 'manual';
+  const successOpacity = useSharedValue(0);
+  const successX = useSharedValue(0);
+  const successY = useSharedValue(0);
+
+  const successStyle = useAnimatedStyle(() => ({
+    opacity: successOpacity.value,
+    transform: [{ translateX: successX.value }, { translateY: successY.value }, { scale: successOpacity.value ? 1 : 0.7 }],
+  }));
 
   useEffect(() => {
-    if (params.data) {
-      try {
-        const parsed = JSON.parse(params.data) as NutritionEntry;
-        setNutritionData(parsed);
-        setOriginalData(parsed);
-      } catch (e) {
-        console.error('Failed to parse nutrition data:', e);
-        router.back();
+    if (!params.data) return;
+    try {
+      const parsed = JSON.parse(params.data) as NutritionEntry;
+      setNutritionData(parsed);
+      setOriginalData(parsed);
+      if (params.feedback === 'incorrect') {
+        setFeedback('incorrect');
       }
+    } catch (e) {
+      console.error('Failed to parse nutrition data:', e);
+      router.back();
     }
-  }, [params.data]);
+  }, [params.data, params.feedback]);
 
-  const handleBack = () => {
-    router.back();
-  };
-
-  const updateMealName = (name: string) => {
-    if (!nutritionData) return;
-    setNutritionData({ ...nutritionData, meal_name: name });
-  };
+  const totals = useMemo(() => {
+    if (!nutritionData) return { calories: 0, protein: 0, carbs: 0, fat: 0 };
+    return {
+      calories: nutritionData.total_calories,
+      protein: nutritionData.total_protein_g,
+      carbs: nutritionData.total_carbs_g,
+      fat: nutritionData.total_fat_g,
+    };
+  }, [nutritionData]);
 
   const updateFoodItem = (index: number, updates: Partial<FoodItem>) => {
     if (!nutritionData) return;
-    
-    const newItems = [...nutritionData.food_items];
-    newItems[index] = { ...newItems[index], ...updates };
-    
-    // Recalculate totals
-    const totalCalories = newItems.reduce((sum, item) => sum + item.calories, 0);
-    const totalProtein = newItems.reduce((sum, item) => sum + item.protein_g, 0);
-    const totalCarbs = newItems.reduce((sum, item) => sum + item.carbs_g, 0);
-    const totalFat = newItems.reduce((sum, item) => sum + item.fat_g, 0);
-    
+    const foodItems = [...nutritionData.food_items];
+    foodItems[index] = { ...foodItems[index], ...updates };
     setNutritionData({
       ...nutritionData,
-      food_items: newItems,
-      total_calories: totalCalories,
-      total_protein_g: totalProtein,
-      total_carbs_g: totalCarbs,
-      total_fat_g: totalFat,
+      food_items: foodItems,
+      total_calories: foodItems.reduce((sum, item) => sum + item.calories, 0),
+      total_protein_g: foodItems.reduce((sum, item) => sum + item.protein_g, 0),
+      total_carbs_g: foodItems.reduce((sum, item) => sum + item.carbs_g, 0),
+      total_fat_g: foodItems.reduce((sum, item) => sum + item.fat_g, 0),
     });
-  };
-
-  const toggleItemExpanded = (index: number) => {
-    setExpandedItems((prev) => {
-      const next = new Set(prev);
-      if (next.has(index)) {
-        next.delete(index);
-      } else {
-        next.add(index);
-      }
-      return next;
-    });
-  };
-
-  const getConfidenceBadge = (confidence: string) => {
-    switch (confidence) {
-      case 'high':
-        return { text: '🟢 High', variant: 'success' as const };
-      case 'medium':
-        return { text: '🟡 Medium', variant: 'warning' as const };
-      case 'low':
-        return { text: '🔴 Low', variant: 'error' as const };
-      default:
-        return { text: '🟡 Medium', variant: 'warning' as const };
-    }
   };
 
   const calculateCorrections = (): UserCorrection[] => {
     if (!nutritionData || !originalData) return [];
-    
     const corrections: UserCorrection[] = [];
-    
     if (nutritionData.meal_name !== originalData.meal_name) {
-      corrections.push({
-        field: 'meal_name',
-        from: originalData.meal_name,
-        to: nutritionData.meal_name,
-      });
+      corrections.push({ field: 'meal_name', from: originalData.meal_name, to: nutritionData.meal_name });
     }
-    
     nutritionData.food_items.forEach((item, index) => {
       const original = originalData.food_items[index];
       if (!original) return;
-      
-      if (item.name !== original.name) {
-        corrections.push({
-          field: `food_items[${index}].name`,
-          from: original.name,
-          to: item.name,
-        });
-      }
-      if (item.calories !== original.calories) {
-        corrections.push({
-          field: `food_items[${index}].calories`,
-          from: original.calories,
-          to: item.calories,
-        });
-      }
+      (['name', 'calories', 'protein_g', 'carbs_g', 'fat_g'] as const).forEach((field) => {
+        if (item[field] !== original[field]) {
+          corrections.push({ field: `food_items[${index}].${field}`, from: original[field], to: item[field] });
+        }
+      });
     });
-    
     return corrections;
   };
 
   const handleSave = async () => {
     if (!nutritionData) return;
-    
-    try {
-      setIsSaving(true);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      
-      const corrections = calculateCorrections();
-      const wasEdited = corrections.length > 0;
-      
-      const result = await addEntry({
-        meal_name: nutritionData.meal_name,
-        food_items: nutritionData.food_items,
-        total_calories: nutritionData.total_calories,
-        protein_g: nutritionData.total_protein_g,
-        carbs_g: nutritionData.total_carbs_g,
-        fat_g: nutritionData.total_fat_g,
-        fiber_g: nutritionData.food_items.reduce((sum, item) => sum + item.fiber_g, 0),
-        image_url: (nutritionData as any).image_url || null,
-        raw_gemini_response: originalData,
-        user_corrections: wasEdited ? corrections : null,
-        user_accepted_without_edit: !wasEdited,
-        is_cheat_day: isCheatDay,
-        logged_at: new Date().toISOString(),
-      });
-      
-      if (result.success) {
-        await updateStreak();
-        router.replace('/(tabs)/camera');
-        Alert.alert('Success', 'Food logged successfully!');
-      } else {
-        Alert.alert('Error', result.error ?? 'Failed to save food entry');
+    requireAuth(async () => {
+      try {
+        setIsSaving(true);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        const corrections = calculateCorrections();
+        const existingEntryId = (nutritionData as any).existing_entry_id as string | undefined;
+        if (existingEntryId) {
+          await removeEntry(existingEntryId);
+        }
+
+        const result = await addEntry({
+          meal_name: nutritionData.meal_name,
+          food_items: nutritionData.food_items,
+          total_calories: nutritionData.total_calories,
+          protein_g: nutritionData.total_protein_g,
+          carbs_g: nutritionData.total_carbs_g,
+          fat_g: nutritionData.total_fat_g,
+          fiber_g: nutritionData.food_items.reduce((sum, item) => sum + item.fiber_g, 0),
+          image_url: (nutritionData as any).image_url || null,
+          raw_gemini_response: isManual ? null : originalData,
+          user_corrections: corrections.length > 0 || feedback === 'incorrect' ? corrections : null,
+          user_accepted_without_edit: feedback !== 'incorrect' && corrections.length === 0,
+          is_cheat_day: false,
+          logged_at: (nutritionData as any).logged_at ?? new Date().toISOString(),
+          source,
+        });
+        if (result.success) {
+          await updateStreak();
+
+          // Fire-and-forget dataset collection. Runs AFTER main save succeeds.
+          // Failure is swallowed inside collectTrainingData; .catch here is a
+          // belt-and-suspenders second safety net. Never awaited — never blocks
+          // the success animation or navigation.
+          const isCorrected = feedback === 'incorrect' && corrections.length > 0;
+          const feedbackTypeForDataset: 'confirmed' | 'corrected' | 'rejected' | 'none' =
+            isManual
+              ? 'none'
+              : feedback === 'correct'
+                ? 'confirmed'
+                : feedback === 'incorrect'
+                  ? (isCorrected ? 'corrected' : 'rejected')
+                  : 'none';
+          collectTrainingData({
+            imageUrl: (nutritionData as any).image_url ?? '',
+            aiPrediction: !isManual && originalData
+              ? {
+                  food_name: originalData.meal_name,
+                  calories: originalData.total_calories,
+                  protein_g: originalData.total_protein_g,
+                  carbs_g: originalData.total_carbs_g,
+                  fat_g: originalData.total_fat_g,
+                  raw_response: originalData,
+                }
+              : null,
+            userCorrection: isManual || isCorrected
+              ? {
+                  food_name: nutritionData.meal_name,
+                  calories: nutritionData.total_calories,
+                  protein_g: nutritionData.total_protein_g,
+                  carbs_g: nutritionData.total_carbs_g,
+                  fat_g: nutritionData.total_fat_g,
+                }
+              : null,
+            feedbackType: feedbackTypeForDataset,
+            source: isManual ? 'manual' : 'scan',
+          }).catch(() => {});
+
+          successOpacity.value = withSequence(withTiming(1, { duration: 120 }), withTiming(1, { duration: 420 }), withTiming(0, { duration: 180 }));
+          successY.value = withSequence(withSpring(-70), withTiming(260, { duration: 520 }));
+          successX.value = withTiming(-90, { duration: 640 });
+          setTimeout(() => router.replace('/(tabs)/home'), 720);
+        } else {
+          Alert.alert('Save failed', result.error ?? 'Please try again.');
+        }
+      } finally {
+        setIsSaving(false);
       }
-    } catch (error) {
-      console.error('Save error:', error);
-      Alert.alert('Error', 'Failed to save food entry');
-    } finally {
-      setIsSaving(false);
-    }
+    });
   };
 
-  if (!nutritionData) {
-    return null;
-  }
+  if (!nutritionData) return null;
 
-  // Calculate progress with this meal
   const currentCalories = summary?.total_calories ?? 0;
-  const newTotal = currentCalories + nutritionData.total_calories;
-  const progress = Math.min(1, newTotal / calorieGoal);
+  const projected = currentCalories + nutritionData.total_calories;
+  const projectedProgress = calorieGoal > 0 ? Math.min(1, projected / calorieGoal) : 0;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
-      >
-        {/* Header */}
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboard}>
         <View style={styles.header}>
-          <Pressable onPress={handleBack} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color={theme.text} />
+          <Pressable style={styles.iconButton} onPress={() => router.back()}>
+            <Ionicons name="close" size={22} color={Colors.brown} />
           </Pressable>
-          <ThemedText variant="h3">Confirm Entry</ThemedText>
-          <View style={styles.placeholder} />
+          <ThemedText variant="bodySemiBold">{isManual ? 'Manual Entry' : 'Scan Result'}</ThemedText>
+          <View style={styles.iconButton} />
         </View>
 
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {/* Meal name (editable) */}
-          <TextInput
-            style={[styles.mealNameInput, { color: theme.text }]}
-            value={nutritionData.meal_name}
-            onChangeText={updateMealName}
-            placeholder="Meal name"
-            placeholderTextColor={theme.textMuted}
-          />
-
-          <View style={[styles.feedbackCard, { backgroundColor: theme.card }]}>
-            <View style={[styles.feedbackIcon, { backgroundColor: Colors.orangeLight + '40' }]}>
-              <Ionicons name="sparkles-outline" size={20} color={Colors.orange} />
-            </View>
-            <View style={styles.feedbackText}>
-              <ThemedText variant="label" color={theme.textMuted}>ARCHETYPE FEEDBACK</ThemedText>
-              <ThemedText variant="bodyMedium">
-                {getScanFeedback(archetype, nutritionData)}
-              </ThemedText>
-            </View>
-          </View>
-
-          {/* Food items */}
-          <View style={styles.itemsContainer}>
-            {nutritionData.food_items.map((item, index) => {
-              const isExpanded = expandedItems.has(index);
-              const confidence = getConfidenceBadge(item.confidence);
-              
-              return (
-                <Card key={index} style={styles.itemCard}>
-                  <Pressable
-                    style={styles.itemHeader}
-                    onPress={() => toggleItemExpanded(index)}
-                  >
-                    <View style={styles.itemInfo}>
-                      <TextInput
-                        style={[styles.itemName, { color: theme.text }]}
-                        value={item.name}
-                        onChangeText={(text) => updateFoodItem(index, { name: text })}
-                        placeholder="Food name"
-                        placeholderTextColor={theme.textMuted}
-                      />
-                      <TextInput
-                        style={[styles.itemQuantity, { color: theme.textMuted }]}
-                        value={item.quantity}
-                        onChangeText={(text) => updateFoodItem(index, { quantity: text })}
-                        placeholder="Quantity"
-                        placeholderTextColor={theme.textMuted}
-                      />
-                    </View>
-                    <View style={styles.itemRight}>
-                      <TextInput
-                        style={[styles.itemCalories, { color: theme.primary }]}
-                        value={item.calories.toString()}
-                        onChangeText={(text) => {
-                          const cal = parseInt(text) || 0;
-                          updateFoodItem(index, { calories: cal });
-                        }}
-                        keyboardType="number-pad"
-                      />
-                      <ThemedText variant="labelSmall" color={theme.textMuted}>
-                        cal
-                      </ThemedText>
-                    </View>
-                    <Ionicons
-                      name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                      size={20}
-                      color={theme.textMuted}
-                    />
-                  </Pressable>
-                  
-                  {/* Confidence badge */}
-                  <Badge
-                    text={confidence.text}
-                    variant={confidence.variant}
-                    size="small"
-                    style={styles.confidenceBadge}
-                  />
-                  
-                  {/* Expanded macros */}
-                  {isExpanded && (
-                    <View style={styles.expandedContent}>
-                      <View style={styles.macroInputRow}>
-                        <View style={styles.macroInput}>
-                          <ThemedText variant="label" color={theme.textMuted}>
-                            Protein
-                          </ThemedText>
-                          <TextInput
-                            style={[styles.macroValue, { color: Colors.brownMid }]}
-                            value={item.protein_g.toString()}
-                            onChangeText={(text) =>
-                              updateFoodItem(index, { protein_g: parseFloat(text) || 0 })
-                            }
-                            keyboardType="decimal-pad"
-                          />
-                          <ThemedText variant="labelSmall" color={theme.textMuted}>g</ThemedText>
-                        </View>
-                        <View style={styles.macroInput}>
-                          <ThemedText variant="label" color={theme.textMuted}>
-                            Carbs
-                          </ThemedText>
-                          <TextInput
-                            style={[styles.macroValue, { color: Colors.yellow }]}
-                            value={item.carbs_g.toString()}
-                            onChangeText={(text) =>
-                              updateFoodItem(index, { carbs_g: parseFloat(text) || 0 })
-                            }
-                            keyboardType="decimal-pad"
-                          />
-                          <ThemedText variant="labelSmall" color={theme.textMuted}>g</ThemedText>
-                        </View>
-                        <View style={styles.macroInput}>
-                          <ThemedText variant="label" color={theme.textMuted}>
-                            Fat
-                          </ThemedText>
-                          <TextInput
-                            style={[styles.macroValue, { color: Colors.oliveMid }]}
-                            value={item.fat_g.toString()}
-                            onChangeText={(text) =>
-                              updateFoodItem(index, { fat_g: parseFloat(text) || 0 })
-                            }
-                            keyboardType="decimal-pad"
-                          />
-                          <ThemedText variant="labelSmall" color={theme.textMuted}>g</ThemedText>
-                        </View>
-                      </View>
-                    </View>
-                  )}
-                </Card>
-              );
-            })}
-          </View>
-
-          {/* Totals */}
-          <View style={styles.totalsSection}>
-            <MacroPillRow
-              protein={nutritionData.total_protein_g}
-              carbs={nutritionData.total_carbs_g}
-              fat={nutritionData.total_fat_g}
-              showLabels
-            />
-          </View>
-
-          {/* Preview ring */}
-          <View style={styles.previewSection}>
-            <ProgressRing
-              progress={progress}
-              size={100}
-              strokeWidth={8}
-              centerContent={
-                <View style={styles.ringContent}>
-                  <ThemedText variant="h3" color={theme.primary}>
-                    {newTotal}
-                  </ThemedText>
-                  <ThemedText variant="labelSmall" color={theme.textMuted}>
-                    of {calorieGoal}
-                  </ThemedText>
-                </View>
-              }
-            />
-            <ThemedText
-              variant="label"
-              color={theme.textMuted}
-              style={styles.previewLabel}
-            >
-              After this meal
-            </ThemedText>
-          </View>
-
-          {/* Cheat day toggle */}
-          <Pressable
-            style={[styles.cheatDayRow, { backgroundColor: theme.card }]}
-            onPress={() => setIsCheatDay(!isCheatDay)}
-          >
-            <ThemedText variant="bodyMedium">
-              🔥 Mark as cheat day
-            </ThemedText>
-            <View
-              style={[
-                styles.checkbox,
-                {
-                  backgroundColor: isCheatDay ? theme.primary : 'transparent',
-                  borderColor: isCheatDay ? theme.primary : theme.border,
-                },
-              ]}
-            >
-              {isCheatDay && (
-                <Ionicons name="checkmark" size={14} color="white" />
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+          <View style={styles.hero}>
+            <View style={styles.foodImageFallback}>
+              {(nutritionData as any).image_url ? (
+                <Image source={{ uri: (nutritionData as any).image_url }} style={styles.foodImage} />
+              ) : (
+                <Ionicons name="restaurant-outline" size={58} color={Colors.olive} />
               )}
             </View>
-          </Pressable>
+            <TextInput
+              value={nutritionData.meal_name}
+              onChangeText={(mealName) => setNutritionData({ ...nutritionData, meal_name: mealName })}
+              style={styles.mealName}
+              placeholder="Food name"
+              placeholderTextColor={Colors.muted}
+            />
+            <View style={styles.calorieLine}>
+              <ThemedText variant="h1" color={Colors.olive}>{totals.calories}</ThemedText>
+              <ThemedText variant="body" color={Colors.muted}>calories</ThemedText>
+            </View>
+          </View>
+
+          <View style={styles.macroCard}>
+            <MacroInput label="Protein" value={totals.protein} color={Colors.olive} onChange={(value) => updateFoodItem(0, { protein_g: value })} />
+            <MacroInput label="Carbs" value={totals.carbs} color={Colors.orange} onChange={(value) => updateFoodItem(0, { carbs_g: value })} />
+            <MacroInput label="Fat" value={totals.fat} color={Colors.brownMid} onChange={(value) => updateFoodItem(0, { fat_g: value })} />
+          </View>
+
+          {!isManual && (
+            <View style={styles.feedbackCard}>
+              <ThemedText variant="bodySemiBold">Was this scan right?</ThemedText>
+              <View style={styles.feedbackRow}>
+                <Pressable
+                  style={[styles.feedbackButton, feedback === 'correct' && styles.feedbackActive]}
+                  onPress={() => setFeedback('correct')}
+                >
+                  <Ionicons name="thumbs-up-outline" size={18} color={feedback === 'correct' ? Colors.white : Colors.olive} />
+                  <ThemedText variant="button" color={feedback === 'correct' ? Colors.white : Colors.olive}>Correct</ThemedText>
+                </Pressable>
+                <Pressable
+                  style={[styles.feedbackButton, feedback === 'incorrect' && styles.feedbackActiveOrange]}
+                  onPress={() => setFeedback('incorrect')}
+                >
+                  <Ionicons name="thumbs-down-outline" size={18} color={feedback === 'incorrect' ? Colors.white : Colors.orange} />
+                  <ThemedText variant="button" color={feedback === 'incorrect' ? Colors.white : Colors.orange}>Incorrect</ThemedText>
+                </Pressable>
+              </View>
+            </View>
+          )}
+
+          {(isManual || feedback === 'incorrect') && (
+            <View style={styles.correctionCard}>
+              <ThemedText variant="bodySemiBold">{isManual ? 'Adjust details' : 'Submit correction'}</ThemedText>
+              {nutritionData.food_items.map((item, index) => (
+                <View key={index} style={styles.foodRow}>
+                  <TextInput
+                    value={item.name}
+                    onChangeText={(name) => updateFoodItem(index, { name })}
+                    style={styles.textInput}
+                    placeholder="Food name"
+                    placeholderTextColor={Colors.muted}
+                  />
+                  <TextInput
+                    value={String(item.calories)}
+                    onChangeText={(value) => updateFoodItem(index, { calories: parseInt(value, 10) || 0 })}
+                    style={styles.textInput}
+                    keyboardType="number-pad"
+                    placeholder="Calories"
+                    placeholderTextColor={Colors.muted}
+                  />
+                  <View style={styles.inlineMacroInputs}>
+                    <SmallMacroField label="Protein" value={item.protein_g} onChange={(protein_g) => updateFoodItem(index, { protein_g })} />
+                    <SmallMacroField label="Carbs" value={item.carbs_g} onChange={(carbs_g) => updateFoodItem(index, { carbs_g })} />
+                    <SmallMacroField label="Fat" value={item.fat_g} onChange={(fat_g) => updateFoodItem(index, { fat_g })} />
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+
+          <View style={styles.projectedCard}>
+            <View>
+              <ThemedText variant="label" color={Colors.muted}>AFTER THIS MEAL</ThemedText>
+              <ThemedText variant="h2">{projected} / {calorieGoal}</ThemedText>
+            </View>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${projectedProgress * 100}%` }]} />
+            </View>
+          </View>
         </ScrollView>
 
-        {/* Bottom actions */}
-        <View style={[styles.bottomActions, { backgroundColor: theme.background }]}>
-          <Button
-            title="Fuel Your Journey"
-            onPress={handleSave}
-            loading={isSaving}
-            variant="primary"
-            size="large"
-            fullWidth
-          />
-          <Button
-            title="Edit Manually"
-            onPress={() => {}}
-            variant="ghost"
-            size="medium"
-            fullWidth
-            style={styles.editButton}
-          />
+        <View style={styles.bottomActions}>
+          <Button title={isManual ? 'Save' : 'Confirm'} onPress={handleSave} loading={isSaving} size="large" fullWidth />
+          {!isManual && (
+            <Button title="Edit" variant="ghost" onPress={() => setFeedback('incorrect')} fullWidth style={styles.editButton} />
+          )}
         </View>
+        <Animated.View pointerEvents="none" style={[styles.successFly, successStyle]}>
+          <Ionicons name="fast-food" size={28} color={Colors.orange} />
+        </Animated.View>
       </KeyboardAvoidingView>
     </SafeAreaView>
+  );
+}
+
+function MacroInput({ label, value, color, onChange }: { label: string; value: number; color: string; onChange: (value: number) => void }) {
+  return (
+    <View style={styles.macroInput}>
+      <ThemedText variant="label" color={Colors.muted}>{label}</ThemedText>
+      <TextInput
+        value={String(Math.round(value))}
+        onChangeText={(text) => onChange(parseFloat(text) || 0)}
+        keyboardType="decimal-pad"
+        style={[styles.macroValue, { color }]}
+      />
+      <ThemedText variant="labelSmall" color={Colors.muted}>g</ThemedText>
+    </View>
+  );
+}
+
+function SmallMacroField({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
+  return (
+    <View style={styles.smallMacroField}>
+      <ThemedText variant="labelSmall" color={Colors.muted}>{label}</ThemedText>
+      <TextInput
+        value={String(Math.round(value))}
+        onChangeText={(text) => onChange(parseFloat(text) || 0)}
+        keyboardType="decimal-pad"
+        style={styles.smallMacroInput}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: Colors.background,
   },
-  keyboardView: {
-    flex: 1,
-  },
+  keyboard: { flex: 1 },
   header: {
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.base,
-    paddingVertical: Spacing.md,
   },
-  backButton: {
-    padding: Spacing.sm,
-  },
-  placeholder: {
-    width: 40,
+  iconButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   content: {
-    flex: 1,
     paddingHorizontal: Spacing.xl,
+    paddingBottom: Spacing.xl,
   },
-  mealNameInput: {
-    fontSize: 24,
-    fontFamily: 'Nunito_800ExtraBold',
-    marginBottom: Spacing.xl,
-  },
-  feedbackCard: {
-    flexDirection: 'row',
+  hero: {
     alignItems: 'center',
-    padding: Spacing.base,
-    borderRadius: BorderRadius.md,
-    gap: Spacing.md,
-    marginBottom: Spacing.xl,
+    paddingVertical: Spacing.xl,
   },
-  feedbackIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  foodImageFallback: {
+    width: 132,
+    height: 132,
+    borderRadius: 66,
+    backgroundColor: Colors.oliveLight,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
+    marginBottom: Spacing.lg,
+    overflow: 'hidden',
   },
-  feedbackText: {
-    flex: 1,
-    gap: 2,
+  foodImage: {
+    width: '100%',
+    height: '100%',
   },
-  itemsContainer: {
-    gap: Spacing.md,
-    marginBottom: Spacing.xl,
+  mealName: {
+    fontSize: 28,
+    lineHeight: 34,
+    fontFamily: 'Nunito_800ExtraBold',
+    color: Colors.brown,
+    textAlign: 'center',
+    minWidth: '80%',
   },
-  itemCard: {
-    padding: Spacing.base,
-  },
-  itemHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  itemInfo: {
-    flex: 1,
-  },
-  itemName: {
-    fontSize: 16,
-    fontFamily: 'Inter_500Medium',
-  },
-  itemQuantity: {
-    fontSize: 14,
-    marginTop: 2,
-  },
-  itemRight: {
+  calorieLine: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    marginRight: Spacing.sm,
-  },
-  itemCalories: {
-    fontSize: 18,
-    fontFamily: 'Inter_600SemiBold',
-    textAlign: 'right',
-    minWidth: 50,
-  },
-  confidenceBadge: {
+    gap: Spacing.sm,
     marginTop: Spacing.sm,
   },
-  expandedContent: {
-    marginTop: Spacing.base,
-    paddingTop: Spacing.base,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.border,
-  },
-  macroInputRow: {
+  macroCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginBottom: Spacing.md,
   },
   macroInput: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.xs,
   },
   macroValue: {
-    fontSize: 16,
-    fontFamily: 'Inter_500Medium',
-    minWidth: 40,
-    textAlign: 'right',
+    fontSize: 22,
+    fontFamily: 'Nunito_800ExtraBold',
+    textAlign: 'center',
+    minWidth: 52,
   },
-  totalsSection: {
-    marginBottom: Spacing.xl,
+  feedbackCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: Spacing.md,
+    gap: Spacing.md,
   },
-  previewSection: {
-    alignItems: 'center',
-    marginBottom: Spacing.xl,
-  },
-  ringContent: {
-    alignItems: 'center',
-  },
-  previewLabel: {
-    marginTop: Spacing.sm,
-  },
-  cheatDayRow: {
+  feedbackRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: Spacing.base,
-    borderRadius: BorderRadius.md,
-    marginBottom: Spacing.xl,
+    gap: Spacing.md,
   },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 2,
-    justifyContent: 'center',
+  feedbackButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
     alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  feedbackActive: {
+    backgroundColor: Colors.olive,
+    borderColor: Colors.olive,
+  },
+  feedbackActiveOrange: {
+    backgroundColor: Colors.orange,
+    borderColor: Colors.orange,
+  },
+  correctionCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: Spacing.md,
+    gap: Spacing.md,
+  },
+  foodRow: {
+    gap: Spacing.sm,
+  },
+  inlineMacroInputs: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  smallMacroField: {
+    flex: 1,
+  },
+  smallMacroInput: {
+    minHeight: 44,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.sm,
+    color: Colors.brown,
+    fontSize: 15,
+  },
+  textInput: {
+    minHeight: 48,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.base,
+    color: Colors.brown,
+    fontSize: 16,
+  },
+  projectedCard: {
+    backgroundColor: Colors.orangePale,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.orangeLight,
+  },
+  progressTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.border,
+    overflow: 'hidden',
+    marginTop: Spacing.md,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 4,
+    backgroundColor: Colors.orange,
   },
   bottomActions: {
     padding: Spacing.xl,
-    paddingBottom: Spacing['2xl'],
+    backgroundColor: Colors.background,
   },
   editButton: {
     marginTop: Spacing.sm,
+  },
+  successFly: {
+    position: 'absolute',
+    alignSelf: 'center',
+    bottom: 116,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
