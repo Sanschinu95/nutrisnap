@@ -9,6 +9,7 @@ import { StatusBar } from 'expo-status-bar';
 import { View, StyleSheet } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import Animated, { FadeIn, FadeOut, ZoomIn } from 'react-native-reanimated';
 import {
   useFonts,
   Nunito_700Bold,
@@ -19,9 +20,15 @@ import {
   Inter_500Medium,
   Inter_600SemiBold,
 } from '@expo-google-fonts/inter';
+import {
+  Fraunces_500Medium,
+  Fraunces_600SemiBold,
+  Fraunces_700Bold,
+} from '@expo-google-fonts/fraunces';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuthStore } from '@/stores/auth.store';
 import { useUserStore } from '@/stores/user.store';
+import { AuthGateModal } from '@/components/ui/AuthGateModal';
 import { initializeNotifications, scheduleWaterReminders, scheduleMealReminder } from '@/lib/notifications';
 
 // Keep splash screen visible while we load resources
@@ -39,7 +46,15 @@ function useProtectedRoute() {
     const inOnboarding = segments[0] === 'onboarding';
     const inFutureYou = segments[0] === 'future-you';
     const inTabs = segments[0] === '(tabs)';
-    const isWelcome = !inAuthGroup && !inOnboarding && !inFutureYou && !inTabs;
+    // Valid in-app screens that authenticated users should reach.
+    // Anything NOT in this list (or one of the other groups) is treated as the
+    // welcome/landing route — which means the guard will redirect signed-in users
+    // away from it. Add new top-level screens here when you create them.
+    const inAppScreen =
+      segments[0] === 'share-story' ||
+      segments[0] === 'confirm' ||
+      segments[0] === 'legal';
+    const isWelcome = !inAuthGroup && !inOnboarding && !inFutureYou && !inTabs && !inAppScreen;
 
     const hasCompletedOnboarding = profile?.onboarding_complete === true;
     const isAuthenticated = !!session;
@@ -67,7 +82,7 @@ function useProtectedRoute() {
 }
 
 export default function RootLayout() {
-  const { theme, isDark } = useTheme();
+  const { theme } = useTheme();
   const [appIsReady, setAppIsReady] = useState(false);
   const initialize = useAuthStore((s) => s.initialize);
   const loadProfile = useUserStore((s) => s.loadProfile);
@@ -78,6 +93,9 @@ export default function RootLayout() {
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
+    Fraunces_500Medium,
+    Fraunces_600SemiBold,
+    Fraunces_700Bold,
   });
 
   useEffect(() => {
@@ -108,6 +126,8 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontError]);
 
+
+
   useProtectedRoute();
 
   if (!appIsReady) {
@@ -116,9 +136,11 @@ export default function RootLayout() {
     );
   }
 
+
+
   return (
     <GestureHandlerRootView style={styles.container}>
-      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <StatusBar style="dark" />
       <Stack
         screenOptions={{
           headerShown: false,
@@ -128,7 +150,7 @@ export default function RootLayout() {
       >
         <Stack.Screen name="index" />
         <Stack.Screen name="auth/index" />
-        <Stack.Screen name="onboarding/continue" />
+
         <Stack.Screen name="onboarding/index" />
         <Stack.Screen name="onboarding/diet" />
         <Stack.Screen name="onboarding/transition" />
@@ -147,7 +169,21 @@ export default function RootLayout() {
             animation: 'slide_from_bottom',
           }}
         />
+        <Stack.Screen
+          name="share-story"
+          options={{
+            presentation: 'fullScreenModal',
+            animation: 'slide_from_bottom',
+          }}
+        />
+        <Stack.Screen
+          name="legal"
+          options={{
+            animation: 'slide_from_right',
+          }}
+        />
       </Stack>
+      <AuthGateModal />
     </GestureHandlerRootView>
   );
 }
@@ -159,4 +195,5 @@ const styles = StyleSheet.create({
   loading: {
     flex: 1,
   },
+
 });
