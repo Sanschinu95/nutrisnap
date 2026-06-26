@@ -29,7 +29,8 @@ import { useTheme } from '@/hooks/useTheme';
 import { useAuthStore } from '@/stores/auth.store';
 import { useUserStore } from '@/stores/user.store';
 import { AuthGateModal } from '@/components/ui/AuthGateModal';
-import { initializeNotifications, scheduleWaterReminders, scheduleMealReminder } from '@/lib/notifications';
+import { useCoachStore } from '@/stores/coach.store';
+import { initializeNotifications, scheduleWaterReminders, scheduleMealReminder, scheduleCoachWeeklyReview } from '@/lib/notifications';
 
 // Keep splash screen visible while we load resources
 SplashScreen.preventAutoHideAsync();
@@ -50,10 +51,12 @@ function useProtectedRoute() {
     // Anything NOT in this list (or one of the other groups) is treated as the
     // welcome/landing route — which means the guard will redirect signed-in users
     // away from it. Add new top-level screens here when you create them.
+    const segment0 = segments[0] as string | undefined;
     const inAppScreen =
-      segments[0] === 'share-story' ||
-      segments[0] === 'confirm' ||
-      segments[0] === 'legal';
+      segment0 === 'share-story' ||
+      segment0 === 'confirm' ||
+      segment0 === 'legal' ||
+      segment0 === 'coach';
     const isWelcome = !inAuthGroup && !inOnboarding && !inFutureYou && !inTabs && !inAppScreen;
 
     const hasCompletedOnboarding = profile?.onboarding_complete === true;
@@ -101,6 +104,8 @@ export default function RootLayout() {
   useEffect(() => {
     async function prepare() {
       await initialize();
+      // Rehydrate the coach store (pinned insight + daily question budget)
+      await useCoachStore.getState().loadPersistedState();
       // Try loading profile for current session
       const { session } = useAuthStore.getState();
       if (session?.user) {
@@ -114,6 +119,8 @@ export default function RootLayout() {
         await scheduleWaterReminders();
         // Default meal reminder at 12:00 PM
         await scheduleMealReminder(12, 0, archetype);
+        // Sunday 8 PM coach weekly review
+        await scheduleCoachWeeklyReview();
       }
     }
     prepare();
@@ -180,6 +187,13 @@ export default function RootLayout() {
           name="legal"
           options={{
             animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="coach"
+          options={{
+            presentation: 'modal',
+            animation: 'slide_from_bottom',
           }}
         />
       </Stack>

@@ -5,6 +5,7 @@
 
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import { router } from 'expo-router';
 import type { ArchetypeKey } from '@/types/archetype';
 import { STREAK_MILESTONES } from '@/constants/archetypeProgress';
 import { trackEvent } from './telemetry';
@@ -16,6 +17,7 @@ export const NOTIFICATION_CHANNELS = {
   GOAL_HIT: 'goal-hit',
   STREAK: 'streak',
   PROGRESS: 'progress',
+  COACH_WEEKLY: 'coach-weekly',
 } as const;
 
 export const NOTIFICATION_CATEGORIES = {
@@ -170,6 +172,12 @@ export async function initializeNotifications(): Promise<boolean> {
       name: 'Progress Updates',
       importance: Notifications.AndroidImportance.DEFAULT,
       lightColor: '#E8703A',
+    });
+
+    await Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNELS.COACH_WEEKLY, {
+      name: 'Coach Weekly Review',
+      importance: Notifications.AndroidImportance.DEFAULT,
+      lightColor: '#3D8BFF',
     });
   }
 
@@ -393,6 +401,41 @@ export async function checkAndSendProgressNotification(
 
 // ─── Cancel Helpers ─────────────────────────────────────────────
 
+// ─── Coach Weekly Review ────────────────────────────────────────
+/**
+ * Schedule a weekly notification every Sunday at 8 PM local time prompting
+ * the user to review their week with the coach. Idempotent — cancels any
+ * existing weekly review before scheduling.
+ */
+export async function scheduleCoachWeeklyReview(): Promise<string> {
+  await cancelCoachWeeklyReview();
+  return Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Your weekly nutrition review is ready',
+      body: 'Tap to see how your week went and what to focus on next.',
+      data: { type: 'coach_weekly_review' },
+      ...(Platform.OS === 'android' && {
+        channelId: NOTIFICATION_CHANNELS.COACH_WEEKLY,
+      }),
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+      weekday: 1, // expo-notifications: 1 = Sunday, 7 = Saturday
+      hour: 20,
+      minute: 0,
+    },
+  });
+}
+
+export async function cancelCoachWeeklyReview(): Promise<void> {
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  for (const notif of scheduled) {
+    if (notif.content.data?.type === 'coach_weekly_review') {
+      await Notifications.cancelScheduledNotificationAsync(notif.identifier);
+    }
+  }
+}
+
 export async function cancelMealReminders(): Promise<void> {
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   for (const notif of scheduled) {
@@ -422,10 +465,14 @@ export function registerNotificationTelemetryListeners(): () => void {
     });
   });
   const opened = Notifications.addNotificationResponseReceivedListener((response) => {
+    const type = response.notification.request.content.data?.type ?? 'unknown';
     trackEvent('notification_opened', {
-      type: response.notification.request.content.data?.type ?? 'unknown',
+      type,
       actionIdentifier: response.actionIdentifier,
     });
+    if (type === 'coach_weekly_review') {
+      router.push('/coach' as any);
+    }
   });
 
   return () => {

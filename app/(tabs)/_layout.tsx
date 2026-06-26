@@ -19,6 +19,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Rect } from 'react-native-svg';
 import { useUIStore } from '@/stores/ui.store';
+import { CoachFAB } from '@/components/ui/CoachFAB';
 
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
 
@@ -260,6 +261,8 @@ function AnimatedTabBar({ state, navigation }: any) {
 
   return (
     <Animated.View style={[styles.barWrap, barAnimStyle]} pointerEvents={hideTabBar ? 'none' : 'auto'}>
+      {/* ── Coach FAB — visible only on Home, symmetric to Scan FAB ── */}
+      <CoachFAB hidden={!isHome} />
       {/* ── Quick-Scan FAB — visible only on Home ── */}
       {isHome && (
         <Animated.View

@@ -21,6 +21,7 @@ import { useAuthGate } from '@/hooks/useAuthGate';
 import { shouldShowFeedback } from '@/lib/feedback';
 import { BorderRadius, Colors, Shadows, Spacing } from '@/constants/theme';
 import { formatVolume, getWaterQuickAdds } from '@/lib/units';
+import { PinnedInsight } from '@/components/ui/PinnedInsight';
 import type { FoodEntry } from '@/types/nutrition';
 import { trackEvent } from '@/lib/telemetry';
 
@@ -284,6 +285,10 @@ export default function HomeScreen() {
             label={`${waterDisplay} / ${hydrationGoalDisplay}`}
             sublabel="Tap to log water"
           />
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(180).springify()} style={styles.pinnedInsightSlot}>
+          <PinnedInsight />
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.routeSection}>
@@ -558,6 +563,10 @@ const styles = StyleSheet.create({
   routeSection: {
     paddingHorizontal: Spacing.xl,
     marginTop: Spacing.xl,
+  },
+  pinnedInsightSlot: {
+    paddingHorizontal: Spacing.xl,
+    marginTop: Spacing.lg,
   },
   sectionHeader: {
     flexDirection: 'row',
