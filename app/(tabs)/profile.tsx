@@ -1,351 +1,393 @@
-/**
- * Profile tab - Stats, weight chart, settings
- */
-
-import { useCallback, useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView, Pressable, Alert, Switch, Image, type ImageSourcePropType } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { ThemedText } from '@/components/ui/ThemedText';
-import { Card } from '@/components/ui/Card';
+import * as Haptics from 'expo-haptics';
 import { Button } from '@/components/ui/Button';
 import { SkeletonCard } from '@/components/ui/SkeletonLoader';
+import { ThemedText } from '@/components/ui/ThemedText';
 import { useTheme } from '@/hooks/useTheme';
-import { useUserStore } from '@/stores/user.store';
+import { useAuthGate } from '@/hooks/useAuthGate';
 import { useAuthStore } from '@/stores/auth.store';
 import { useDailyStore } from '@/stores/daily.store';
-import { getArchetype, type ArchetypeKey } from '@/constants/archetypes';
-import { Spacing, Colors, BorderRadius } from '@/constants/theme';
+import { useUserStore } from '@/stores/user.store';
+import { exportAccountData, deleteAccountData } from '@/lib/accountData';
+import { BorderRadius, Colors, Spacing } from '@/constants/theme';
+import { formatVolume, formatWeight, unitLabel, type UnitPreference } from '@/lib/units';
 
-const ARCHETYPE_ART: Record<ArchetypeKey, ImageSourcePropType> = {
-  wolf: require('@/assets/archetypes/wolf.png'),
-  bear: require('@/assets/archetypes/bear.png'),
-  lion: require('@/assets/archetypes/lion.png'),
-  deer: require('@/assets/archetypes/deer.png'),
-  tigress: require('@/assets/archetypes/tigress.png'),
-  phoenix: require('@/assets/archetypes/phoenix.png'),
-  doe: require('@/assets/archetypes/doe.png'),
-  swan: require('@/assets/archetypes/swan.png'),
-};
-
-const JOURNEY_TITLES: Record<ArchetypeKey, string> = {
-  wolf: 'Focused Hunter',
-  bear: 'Steady Strength',
-  lion: 'Commanding Discipline',
-  deer: 'Light Endurance',
-  tigress: 'Lean Strength',
-  phoenix: 'Transformation Journey',
-  doe: 'Mindful Sustainability',
-  swan: 'Graceful Discipline',
-};
+type FeedbackType = 'Report Bug' | 'Feature Request' | null;
 
 export default function ProfileScreen() {
-  const { theme, isDark } = useTheme();
-  const { profile, archetype, streak, calorieGoal, isLoading } = useUserStore();
+  const { theme } = useTheme();
+  const { profile, streak, isLoading, calorieGoal, updateProfile } = useUserStore();
   const { entries, waterMl, loadToday } = useDailyStore();
-  const { signOut } = useAuthStore();
-  const [darkModeEnabled, setDarkModeEnabled] = useState(isDark);
-
-  const archetypeInfo = archetype ? getArchetype(archetype) : null;
+  const { signOut, user } = useAuthStore();
+  const { requireAuth } = useAuthGate();
+  const [feedbackType, setFeedbackType] = useState<FeedbackType>(null);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     loadToday();
   }, [loadToday]);
 
+  const initials = useMemo(
+    () => profile?.name?.split(' ').map((part) => part[0]).join('').toUpperCase().slice(0, 2) ?? '?',
+    [profile?.name]
+  );
+
+  const unitPref = profile?.unit_preference ?? 'metric';
+
   const handleSignOut = useCallback(() => {
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
-      [
+    requireAuth(async () => {
+      Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: async () => {
-            await signOut();
+        { text: 'Sign Out', style: 'destructive', onPress: signOut },
+      ]);
+    });
+  }, [signOut, requireAuth]);
+
+  const handleToggleUnits = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const newPref: UnitPreference = unitPref === 'metric' ? 'imperial' : 'metric';
+    updateProfile({ unit_preference: newPref });
+  }, [unitPref, updateProfile]);
+
+  const handleExportData = useCallback(() => {
+    requireAuth(async () => {
+      if (!user) return;
+      setIsExporting(true);
+      try {
+        const data = await exportAccountData(user.id);
+        const jsonString = JSON.stringify(data, null, 2);
+        await Share.share({
+          title: 'NutriSnap Data Export',
+          message: jsonString,
+        });
+      } catch (error) {
+        Alert.alert('Export Failed', 'Unable to export your data. Please try again.');
+        console.error('Export error:', error);
+      } finally {
+        setIsExporting(false);
+      }
+    });
+  }, [user, requireAuth]);
+
+  const handleDeleteAccount = useCallback(() => {
+    requireAuth(async () => {
+      if (!user) return;
+      Alert.alert(
+        'Delete Account',
+        'Are you sure? All your meals, progress, and profile data will be permanently removed.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete Everything',
+            style: 'destructive',
+            onPress: () => {
+              Alert.alert(
+                'This cannot be undone',
+                'Your account and all associated data will be permanently deleted.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Permanently Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                      setIsDeleting(true);
+                      try {
+                        await deleteAccountData(user.id);
+                        await signOut();
+                      } catch (error) {
+                        Alert.alert('Delete Failed', 'Unable to delete your account. Please try again.');
+                        console.error('Delete error:', error);
+                      } finally {
+                        setIsDeleting(false);
+                      }
+                    },
+                  },
+                ],
+              );
+            },
           },
-        },
-      ]
-    );
-  }, [signOut]);
+        ],
+      );
+    });
+  }, [user, signOut, requireAuth]);
+
+  const handleFeedbackSubmit = () => {
+    setFeedbackType(null);
+    setFeedbackText('');
+    Alert.alert('Thanks', 'Feedback captured locally for this V1 UI flow.');
+  };
 
   if (isLoading || !profile) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-        <SkeletonCard lines={2} style={styles.skeletonCard} />
-        <SkeletonCard lines={4} style={styles.skeletonCard} />
+        <SkeletonCard lines={3} style={styles.skeleton} />
+        <SkeletonCard lines={4} style={styles.skeleton} />
       </SafeAreaView>
     );
   }
 
-  // Get initials for avatar
-  const initials = profile.name
-    ? profile.name
-        .split(' ')
-        .map((n) => n[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2)
-    : '?';
-
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Character header */}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+        <View style={styles.topBar}>
+          <Pressable style={styles.iconButton} onPress={() => router.push('/(tabs)/home')}>
+            <Ionicons name="chevron-back" size={22} color={Colors.brown} />
+          </Pressable>
+          <ThemedText variant="bodySemiBold">Profile</ThemedText>
+          <View style={styles.iconButton} />
+        </View>
+
         <View style={styles.header}>
-          {archetypeInfo && archetype ? (
-            <View style={[styles.characterHero, { backgroundColor: archetypeInfo.colors.bg }]}>
-              <View style={styles.characterCopy}>
-                <View style={[styles.avatarSmall, { backgroundColor: theme.primary }]}>
-                  <ThemedText variant="bodyMedium" color="white">
-                    {initials}
-                  </ThemedText>
-                </View>
-                <ThemedText variant="label" color={archetypeInfo.colors.accent}>
-                  {profile.name}
-                </ThemedText>
-                <ThemedText variant="h1" color="white" style={styles.characterName}>
-                  {archetypeInfo.name}
-                </ThemedText>
-                <ThemedText variant="bodyMedium" color="rgba(255,255,255,0.78)">
-                  {JOURNEY_TITLES[archetype]}
-                </ThemedText>
-                <ThemedText variant="label" color="rgba(255,255,255,0.68)" style={styles.characterDescription}>
-                  {archetypeInfo.description}
-                </ThemedText>
-              </View>
-              <Image source={ARCHETYPE_ART[archetype]} style={styles.characterImage} resizeMode="contain" />
-            </View>
-          ) : (
-            <View style={styles.emptyProfileHeader}>
-              <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
-                <ThemedText variant="h2" color="white">{initials}</ThemedText>
-              </View>
-              <ThemedText variant="h2" style={styles.name}>{profile.name}</ThemedText>
-              <ThemedText variant="body" color={theme.textMuted}>Let's build your nutrition journey.</ThemedText>
-            </View>
-          )}
+          <View style={styles.avatar}>
+            <ThemedText variant="h1" color="white">{initials}</ThemedText>
+          </View>
+          <ThemedText variant="h1" align="center" style={styles.name}>
+            {profile.name}
+          </ThemedText>
+          <View style={styles.streakPill}>
+            <Ionicons name="flame" size={18} color={Colors.orange} />
+            <ThemedText variant="bodySemiBold" color={Colors.orange}>{streak} day streak</ThemedText>
+          </View>
         </View>
 
-        {/* Stats row */}
         <View style={styles.statsGrid}>
-          <Card style={styles.statCard}>
-            <ThemedText variant="h2" color={theme.primary}>
-              {profile.weight_kg?.toFixed(1)}
-            </ThemedText>
-            <ThemedText variant="label" color={theme.textMuted}>
-              Current (kg)
-            </ThemedText>
-          </Card>
-          <Card style={styles.statCard}>
-            <ThemedText variant="h2" color={theme.accent}>
-              {profile.goal_weight_kg?.toFixed(1)}
-            </ThemedText>
-            <ThemedText variant="label" color={theme.textMuted}>
-              Goal (kg)
-            </ThemedText>
-          </Card>
-          <Card style={styles.statCard}>
-            <ThemedText variant="h2" color={Colors.yellow}>
-              {streak}
-            </ThemedText>
-            <ThemedText variant="label" color={theme.textMuted}>
-              Day Streak
-            </ThemedText>
-          </Card>
-          <Card style={styles.statCard}>
-            <ThemedText variant="h2" color={theme.primary}>
-              {entries.length}
-            </ThemedText>
-            <ThemedText variant="label" color={theme.textMuted}>
-              Meals Logged
-            </ThemedText>
-          </Card>
-          <Card style={styles.statCard}>
-            <ThemedText variant="h2" color="#4FC3F7">
-              {(waterMl / 1000).toFixed(1)}L
-            </ThemedText>
-            <ThemedText variant="label" color={theme.textMuted}>
-              Water Today
-            </ThemedText>
-          </Card>
-          <Card style={styles.statCard}>
-            <ThemedText variant="h2" color={theme.accent}>
-              {Math.max(streak, profile.longest_streak ?? 0)}
-            </ThemedText>
-            <ThemedText variant="label" color={theme.textMuted}>
-              Days Active
-            </ThemedText>
-          </Card>
+          <Stat label="Current Weight" value={formatWeight(profile.weight_kg, unitPref)} icon="scale-outline" />
+          <Stat label="Goal Weight" value={formatWeight(profile.goal_weight_kg, unitPref)} icon="flag-outline" />
+          <Stat label="Meals Logged" value={`${entries.length}`} icon="restaurant-outline" />
+          <Stat label="Days Active" value={`${Math.max(streak, profile.longest_streak ?? 0)}`} icon="calendar-outline" />
+          <Stat label="Water Logged" value={formatVolume(waterMl, unitPref)} icon="water-outline" />
+          <Stat label="Calorie Goal" value={`${calorieGoal}`} icon="pulse-outline" />
         </View>
 
-        {/* Weight Chart placeholder */}
         <View style={styles.section}>
-          <ThemedText variant="h3" style={styles.sectionTitle}>
-            Weight Progress
-          </ThemedText>
-          <Card style={styles.chartCard}>
-            <View style={styles.chartPlaceholder}>
-              <Ionicons name="analytics-outline" size={48} color={theme.textMuted} />
-              <ThemedText
-                variant="body"
-                color={theme.textMuted}
-                align="center"
-                style={styles.chartText}
-              >
-                Your story begins with today's choices.
-              </ThemedText>
-            </View>
-          </Card>
+          <ThemedText variant="h3">Consistency</ThemedText>
+          <View style={styles.heatmapCard}>
+            {Array.from({ length: 35 }).map((_, index) => {
+              const active = index >= 34 - Math.max(0, Math.min(34, streak));
+              const today = index === 34;
+              return (
+                <View
+                  key={index}
+                  style={[
+                    styles.heatCell,
+                    { backgroundColor: active ? Colors.olive : Colors.border },
+                    today && styles.heatCellToday,
+                  ]}
+                />
+              );
+            })}
+          </View>
         </View>
 
-        {/* Settings */}
         <View style={styles.section}>
-          <ThemedText variant="h3" style={styles.sectionTitle}>
-            Settings
-          </ThemedText>
-
-          <Card style={styles.settingsCard}>
-            {/* Edit Profile */}
-            <Pressable style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Ionicons name="person-outline" size={22} color={theme.text} />
-                <ThemedText variant="body" style={styles.settingLabel}>
-                  Edit Profile
-                </ThemedText>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={theme.textMuted} />
-            </Pressable>
-
-            {/* Calorie Goal */}
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Ionicons name="flame-outline" size={22} color={theme.text} />
-                <ThemedText variant="body" style={styles.settingLabel}>
-                  Daily Calorie Goal
-                </ThemedText>
-              </View>
-              <ThemedText variant="bodyMedium" color={theme.primary}>
-                {calorieGoal} cal
-              </ThemedText>
-            </View>
-
-            {/* Notifications */}
-            <Pressable style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Ionicons name="notifications-outline" size={22} color={theme.text} />
-                <ThemedText variant="body" style={styles.settingLabel}>
-                  Notifications
-                </ThemedText>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={theme.textMuted} />
-            </Pressable>
-
-            {/* Dark Mode */}
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Ionicons name="moon-outline" size={22} color={theme.text} />
-                <ThemedText variant="body" style={styles.settingLabel}>
-                  Dark Mode
-                </ThemedText>
-              </View>
-              <Switch
-                value={darkModeEnabled}
-                onValueChange={setDarkModeEnabled}
-                trackColor={{ false: theme.border, true: theme.primary }}
-                thumbColor="white"
-              />
-            </View>
-
-            {/* Units */}
-            <Pressable style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Ionicons name="scale-outline" size={22} color={theme.text} />
-                <ThemedText variant="body" style={styles.settingLabel}>
-                  Units
-                </ThemedText>
-              </View>
-              <ThemedText variant="label" color={theme.textMuted}>
-                kg / cm
-              </ThemedText>
-            </Pressable>
-          </Card>
-
-          {/* Sign Out */}
-          <Button
-            title="Sign Out"
-            onPress={handleSignOut}
-            variant="ghost"
-            style={styles.signOutButton}
-            textStyle={{ color: theme.error }}
-          />
+          <ThemedText variant="h3">Feedback</ThemedText>
+          <View style={styles.feedbackCard}>
+            <FeedbackRow title="Report Bug" icon="bug-outline" onPress={() => setFeedbackType('Report Bug')} />
+            <FeedbackRow title="Feature Request" icon="sparkles-outline" onPress={() => setFeedbackType('Feature Request')} />
+            <FeedbackRow title="Contact Support" icon="mail-outline" onPress={() => Alert.alert('Support', 'Use your existing NutriSnap support channel.')} />
+          </View>
         </View>
+
+        <View style={styles.section}>
+          <ThemedText variant="h3">Settings</ThemedText>
+          <View style={styles.settingsCard}>
+            <SettingsRow title="Edit Profile" icon="person-outline" trailing="Open" />
+            <SettingsRow title="Daily Calorie Goal" icon="flame-outline" trailing={`${calorieGoal} cal`} />
+            <SettingsRow title="Notifications" icon="notifications-outline" trailing="On" />
+            <SettingsRow
+              title="Units"
+              icon="scale-outline"
+              trailing={unitLabel(unitPref)}
+              onPress={handleToggleUnits}
+            />
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <ThemedText variant="h3">Account</ThemedText>
+          <View style={styles.settingsCard}>
+            <SettingsRow
+              title="Export My Data"
+              icon="download-outline"
+              trailing={isExporting ? '' : 'JSON'}
+              onPress={handleExportData}
+              iconColor={Colors.blue}
+              trailingContent={isExporting ? <ActivityIndicator size="small" color={Colors.blue} /> : undefined}
+            />
+            <SettingsRow
+              title="Delete Account"
+              icon="trash-outline"
+              trailing={isDeleting ? '' : 'Permanent'}
+              onPress={handleDeleteAccount}
+              iconColor={Colors.error}
+              labelColor={Colors.error}
+              trailingContent={isDeleting ? <ActivityIndicator size="small" color={Colors.error} /> : undefined}
+            />
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <ThemedText variant="h3">Legal</ThemedText>
+          <View style={styles.settingsCard}>
+            <SettingsRow
+              title="Privacy Policy"
+              icon="shield-checkmark-outline"
+              trailing=""
+              onPress={() => router.push({ pathname: '/legal' as any, params: { section: 'privacy' } })}
+              showChevron
+            />
+            <SettingsRow
+              title="Terms of Service"
+              icon="document-text-outline"
+              trailing=""
+              onPress={() => router.push({ pathname: '/legal' as any, params: { section: 'terms' } })}
+              showChevron
+            />
+          </View>
+        </View>
+
+        <Button title="Sign Out" variant="ghost" onPress={handleSignOut} style={styles.signOut} textStyle={{ color: Colors.error }} />
 
         <View style={styles.bottomPadding} />
       </ScrollView>
+
+      {feedbackType && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.feedbackForm}>
+            <ThemedText variant="h3">{feedbackType}</ThemedText>
+            <TextInput
+              value={feedbackText}
+              onChangeText={setFeedbackText}
+              placeholder="Tell us what happened"
+              placeholderTextColor={Colors.muted}
+              multiline
+              style={styles.feedbackInput}
+            />
+            <View style={styles.formActions}>
+              <Button title="Cancel" variant="ghost" onPress={() => setFeedbackType(null)} style={styles.formButton} />
+              <Button title="Submit" onPress={handleFeedbackSubmit} style={styles.formButton} />
+            </View>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
 
+function Stat({ label, value, icon }: { label: string; value: string; icon: keyof typeof Ionicons.glyphMap }) {
+  return (
+    <View style={styles.statCard}>
+      <Ionicons name={icon} size={20} color={Colors.olive} />
+      <ThemedText variant="bodySemiBold" numberOfLines={1} adjustsFontSizeToFit>{value}</ThemedText>
+      <ThemedText variant="labelSmall" color={Colors.muted} align="center">{label}</ThemedText>
+    </View>
+  );
+}
+
+function FeedbackRow({ title, icon, onPress }: { title: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void }) {
+  return (
+    <Pressable style={styles.row} onPress={onPress}>
+      <View style={styles.rowLeft}>
+        <Ionicons name={icon} size={21} color={Colors.olive} />
+        <ThemedText variant="bodyMedium">{title}</ThemedText>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={Colors.muted} />
+    </Pressable>
+  );
+}
+
+function SettingsRow({
+  title,
+  icon,
+  trailing,
+  onPress,
+  iconColor,
+  labelColor,
+  showChevron,
+  trailingContent,
+}: {
+  title: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  trailing: string;
+  onPress?: () => void;
+  iconColor?: string;
+  labelColor?: string;
+  showChevron?: boolean;
+  trailingContent?: React.ReactNode;
+}) {
+  return (
+    <Pressable style={styles.row} onPress={onPress} disabled={!onPress}>
+      <View style={styles.rowLeft}>
+        <Ionicons name={icon} size={21} color={iconColor ?? Colors.brown} />
+        <ThemedText variant="bodyMedium" color={labelColor}>{title}</ThemedText>
+      </View>
+      {trailingContent ?? (
+        showChevron ? (
+          <Ionicons name="chevron-forward" size={18} color={Colors.muted} />
+        ) : (
+          <ThemedText variant="label" color={Colors.muted}>{trailing}</ThemedText>
+        )
+      )}
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  skeletonCard: {
+  container: { flex: 1 },
+  content: { paddingBottom: Spacing['5xl'] },
+  skeleton: {
     marginHorizontal: Spacing.xl,
     marginTop: Spacing.xl,
   },
+  topBar: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  iconButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+  },
   header: {
+    alignItems: 'center',
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.xl,
     paddingBottom: Spacing.xl,
   },
-  characterHero: {
-    minHeight: 190,
-    borderRadius: BorderRadius.lg,
-    overflow: 'hidden',
-    padding: Spacing.lg,
-    flexDirection: 'row',
+  avatar: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: Colors.olive,
     alignItems: 'center',
-  },
-  characterCopy: {
-    flex: 1,
-    zIndex: 1,
-  },
-  avatarSmall: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
     justifyContent: 'center',
-    alignItems: 'center',
     marginBottom: Spacing.md,
   },
-  characterName: {
+  name: {
     fontSize: 34,
     lineHeight: 40,
   },
-  characterDescription: {
-    marginTop: Spacing.sm,
-    maxWidth: 190,
-  },
-  characterImage: {
-    width: 138,
-    height: 138,
-    marginRight: -Spacing.md,
-  },
-  emptyProfileHeader: {
+  streakPill: {
+    marginTop: Spacing.md,
+    flexDirection: 'row',
     alignItems: 'center',
-  },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: Spacing.base,
-  },
-  name: {
-    marginBottom: Spacing.sm,
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.orangePale,
   },
   statsGrid: {
     flexDirection: 'row',
@@ -356,55 +398,99 @@ const styles = StyleSheet.create({
   },
   statCard: {
     width: '30.5%',
+    minHeight: 104,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
     alignItems: 'center',
-    paddingVertical: Spacing.base,
-    minHeight: 92,
     justifyContent: 'center',
+    gap: Spacing.xs,
+    padding: Spacing.sm,
   },
   section: {
     paddingHorizontal: Spacing.xl,
+    gap: Spacing.md,
     marginBottom: Spacing.xl,
   },
-  sectionTitle: {
-    marginBottom: Spacing.md,
+  heatmapCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.lg,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
   },
-  chartCard: {
-    minHeight: 200,
+  heatCell: {
+    width: 24,
+    height: 24,
+    borderRadius: 7,
   },
-  chartPlaceholder: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: Spacing['3xl'],
+  heatCellToday: {
+    borderWidth: 2,
+    borderColor: Colors.orange,
   },
-  chartText: {
-    marginTop: Spacing.base,
-    maxWidth: 200,
-  },
-  settingsCard: {
-    padding: 0,
+  feedbackCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
     overflow: 'hidden',
   },
-  settingRow: {
+  settingsCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    overflow: 'hidden',
+  },
+  row: {
+    minHeight: 58,
+    paddingHorizontal: Spacing.base,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: Spacing.base,
-    paddingHorizontal: Spacing.base,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Colors.border,
+    gap: Spacing.md,
   },
-  settingInfo: {
+  rowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: Spacing.md,
+    flex: 1,
   },
-  settingLabel: {
-    marginLeft: Spacing.md,
+  signOut: { marginHorizontal: Spacing.xl },
+  bottomPadding: { height: 120 },
+  modalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(47,36,30,0.25)',
+    justifyContent: 'center',
+    padding: Spacing.xl,
   },
-  signOutButton: {
-    marginTop: Spacing.xl,
+  feedbackForm: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.xl,
+    gap: Spacing.md,
   },
-  bottomPadding: {
-    height: Spacing['4xl'],
+  feedbackInput: {
+    minHeight: 130,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.base,
+    color: Colors.brown,
+    textAlignVertical: 'top',
+    fontSize: 16,
+  },
+  formActions: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  formButton: {
+    flex: 1,
   },
 });

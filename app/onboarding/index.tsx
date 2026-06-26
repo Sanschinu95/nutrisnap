@@ -1,355 +1,155 @@
-/**
- * Onboarding - Redesigned multi-step flow
- * Steps: Gender → Archetype → Body Stats → Goal
- * Inspired by: archetype.png mockup
- *
- * Archetype card behavior:
- * - Single tap: scale 1.07x, show expanded info, glowing border
- * - Double tap: select and proceed
- */
-
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
-  View,
-  StyleSheet,
-  Pressable,
-  TextInput,
-  ScrollView,
-  Dimensions,
-  FlatList,
   KeyboardAvoidingView,
   Platform,
-  Alert,
-  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-  withRepeat,
-  withSequence,
-  Easing,
-  FadeInDown,
-  interpolateColor,
-  cancelAnimation,
-} from 'react-native-reanimated';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { ThemedText } from '@/components/ui/ThemedText';
-import { Button } from '@/components/ui/Button';
-import { useTheme } from '@/hooks/useTheme';
-import { useUserStore } from '@/stores/user.store';
-import { ARCHETYPES, ARCHETYPE_MACROS, type ArchetypeKey, FEMALE_ARCHETYPES } from '@/constants/archetypes';
-import { ArchetypeColors, Spacing, BorderRadius, Colors } from '@/constants/theme';
+import { Colors, BorderRadius, Spacing } from '@/constants/theme';
+import type { ArchetypeKey } from '@/constants/archetypes';
 import type { BiologicalSex, GoalType } from '@/types/archetype';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-const MALE_ARCHETYPES: ArchetypeKey[] = ['wolf', 'bear', 'lion', 'deer'];
-
-const ARCHETYPE_IMAGES: Record<ArchetypeKey, any> = {
-  wolf: require('@/assets/archetypes/wolf.png'),
-  bear: require('@/assets/archetypes/bear.png'),
-  lion: require('@/assets/archetypes/lion.png'),
-  deer: require('@/assets/archetypes/deer.png'),
-  tigress: require('@/assets/archetypes/tigress.png'),
-  phoenix: require('@/assets/archetypes/phoenix.png'),
-  doe: require('@/assets/archetypes/doe.png'),
-  swan: require('@/assets/archetypes/swan.png'),
-};
-
-const GENDER_IMAGES = {
-  male: require('@/assets/archetypes/male.png'),
-  female: require('@/assets/archetypes/female.png'),
-};
-
-const ARCHETYPE_BADGES: Record<ArchetypeKey, string> = {
-  wolf: 'Lean & Athletic',
-  bear: 'Bulk & Strength',
-  lion: 'Balanced Power',
-  deer: 'Endurance & Flexibility',
-  tigress: 'Fierce & Lean',
-  phoenix: 'Rising Transformation',
-  doe: 'Graceful & Balanced',
-  swan: 'Elegant & Disciplined',
-};
-
-const GOAL_OPTIONS = [
-  { value: 'cut', label: '🔪 Cut', desc: 'Lose fat, maintain muscle' },
-  { value: 'maintain', label: '⚖️ Maintain', desc: 'Stay at current weight' },
-  { value: 'bulk', label: '💪 Bulk', desc: 'Gain muscle, minimize fat' },
-];
-
-const ACTIVITY_OPTIONS = [
-  { value: 1, label: 'Sedentary', desc: 'Little to no exercise' },
-  { value: 2, label: 'Light', desc: '1-2 days/week' },
-  { value: 3, label: 'Moderate', desc: '3-5 days/week' },
-  { value: 4, label: 'Active', desc: '6-7 days/week' },
-  { value: 5, label: 'Very Active', desc: 'Pro athlete level' },
-];
+import { detectDefaultUnit, feetInchesToCm, lbToKg, type UnitPreference } from '@/lib/units';
 
 type StepData = {
   name: string;
   biologicalSex: BiologicalSex | null;
-  age: number | null;
-  weight: number | null;
-  height: number | null;
-  goal: GoalType | null;
+  age: string;
+  unitPreference: UnitPreference;
+  /** Height in cm — used when unitPreference === 'metric' */
+  heightCm: string;
+  /** Feet portion — used when unitPreference === 'imperial' */
+  heightFt: string;
+  /** Inches portion — used when unitPreference === 'imperial' */
+  heightIn: string;
+  /** Weight value in the user-facing unit (kg if metric, lb if imperial) */
+  weight: string;
   activityLevel: number | null;
   archetype: ArchetypeKey | null;
+  goal: GoalType | null;
 };
 
-// ─── Glowing Archetype Card ─────────────────────────────────────
-function GlowingArchetypeCard({
-  archetypeKey,
-  isExpanded,
-  isSelected,
-  onSingleTap,
-  onDoubleTap,
-}: {
-  archetypeKey: ArchetypeKey;
-  isExpanded: boolean;
-  isSelected: boolean;
-  onSingleTap: () => void;
-  onDoubleTap: () => void;
-}) {
-  const { theme } = useTheme();
-  const info = ARCHETYPES[archetypeKey];
-  const accentColor = info.colors.accent;
-  const cardWidth = (SCREEN_WIDTH - Spacing.xl * 2 - Spacing.md) / 2;
+const TOTAL_STEPS = 8;
 
-  // Scale animation
-  const scale = useSharedValue(1);
-  // Glow animation for border
-  const glowProgress = useSharedValue(0);
+const NUTRITION_STYLES: Array<{ key: ArchetypeKey; title: string; desc: string; icon: keyof typeof Ionicons.glyphMap }> = [
+  { key: 'lion', title: 'Balanced', desc: 'A steady mix of protein, carbs, and fats.', icon: 'scale-outline' },
+  { key: 'wolf', title: 'High Protein', desc: 'More protein for strength and recovery.', icon: 'barbell-outline' },
+  { key: 'deer', title: 'Plant Forward', desc: 'Lighter meals with more carbs and plants.', icon: 'leaf-outline' },
+  { key: 'bear', title: 'Strength Fuel', desc: 'More energy for training and growth.', icon: 'fitness-outline' },
+];
 
-  // Track for double tap
-  const lastTap = useRef<number>(0);
-  const DOUBLE_TAP_DELAY = 300;
+const ACTIVITY_OPTIONS = [
+  { value: 1, title: 'Low', desc: 'Mostly seated days' },
+  { value: 2, title: 'Light', desc: 'A few active moments' },
+  { value: 3, title: 'Moderate', desc: 'Training a few days weekly' },
+  { value: 4, title: 'High', desc: 'Active most days' },
+  { value: 5, title: 'Athlete', desc: 'Very active routine' },
+];
 
-  useEffect(() => {
-    if (isExpanded) {
-      scale.value = withSpring(1.07, { damping: 12, stiffness: 150 });
-      // Start glowing border animation
-      glowProgress.value = withRepeat(
-        withTiming(1, { duration: 2000, easing: Easing.linear }),
-        -1,
-        false
-      );
-    } else {
-      scale.value = withSpring(1, { damping: 14, stiffness: 200 });
-      cancelAnimation(glowProgress);
-      glowProgress.value = withTiming(0, { duration: 300 });
-    }
-  }, [isExpanded, scale, glowProgress]);
+const GOAL_OPTIONS: Array<{ value: GoalType; title: string; desc: string }> = [
+  { value: 'cut', title: 'Lose Weight', desc: 'Reduce body fat while protecting muscle.' },
+  { value: 'maintain', title: 'Maintain', desc: 'Stay steady and improve consistency.' },
+  { value: 'bulk', title: 'Gain Muscle', desc: 'Build mass with a controlled surplus.' },
+];
 
-  const animatedCardStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
+const UNIT_OPTIONS: Array<{
+  key: UnitPreference;
+  title: string;
+  desc: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}> = [
+  { key: 'metric', title: 'Metric', desc: 'kg, cm, ml', icon: 'flask-outline' },
+  { key: 'imperial', title: 'Imperial', desc: 'lb, ft·in, fl oz', icon: 'speedometer-outline' },
+];
 
-  const animatedBorderStyle = useAnimatedStyle(() => {
-    if (!isExpanded) {
-      return {
-        borderColor: isSelected ? accentColor : theme.border,
-        borderWidth: isSelected ? 2.5 : 1,
-      };
-    }
-    // Animate border color through accent shades
-    const color = interpolateColor(
-      glowProgress.value,
-      [0, 0.33, 0.66, 1],
-      [accentColor + '40', accentColor, accentColor + '80', accentColor + '40']
-    );
-    return {
-      borderColor: color,
-      borderWidth: 2.5,
-    };
-  });
-
-  // Shadow glow for expanded
-  const animatedShadowStyle = useAnimatedStyle(() => ({
-    shadowOpacity: isExpanded ? 0.4 : 0.08,
-    shadowRadius: isExpanded ? 16 : 6,
-    shadowColor: isExpanded ? accentColor : '#000',
-    elevation: isExpanded ? 8 : 2,
-  }));
-
-  const handlePress = () => {
-    const now = Date.now();
-    if (now - lastTap.current < DOUBLE_TAP_DELAY) {
-      // Double tap
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      onDoubleTap();
-    } else {
-      // Single tap
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      onSingleTap();
-    }
-    lastTap.current = now;
-  };
-
-  const macroP = Math.round(info.macros.protein * 100);
-  const macroC = Math.round(info.macros.carbs * 100);
-  const macroF = Math.round(info.macros.fat * 100);
-
-  return (
-    <Animated.View style={[animatedCardStyle, animatedShadowStyle, { shadowOffset: { width: 0, height: 4 } }]}>
-      <Pressable onPress={handlePress}>
-        <Animated.View
-          style={[
-            styles.archetypeCard,
-            { width: cardWidth, backgroundColor: theme.card },
-            animatedBorderStyle,
-          ]}
-        >
-          {/* Image */}
-          <View style={styles.archetypeImageContainer}>
-            <Image
-              source={ARCHETYPE_IMAGES[archetypeKey]}
-              style={styles.archetypeImage}
-              resizeMode="contain"
-            />
-          </View>
-
-          {/* Name */}
-          <ThemedText
-            variant="h3"
-            color={isExpanded ? accentColor : theme.text}
-            align="center"
-            style={styles.archetypeName}
-          >
-            {info.name}
-          </ThemedText>
-
-          {/* Badge */}
-          <View style={[styles.archetypeBadge, { backgroundColor: theme.border }]}>
-            <ThemedText variant="labelSmall" color={theme.textSecondary} align="center">
-              {ARCHETYPE_BADGES[archetypeKey]}
-            </ThemedText>
-          </View>
-
-          {/* Description */}
-          <ThemedText
-            variant="label"
-            color={theme.textMuted}
-            align="center"
-            style={styles.archetypeDesc}
-            numberOfLines={isExpanded ? 5 : 2}
-          >
-            {isExpanded ? info.longDescription : info.description}
-          </ThemedText>
-
-          {/* Expanded: macro breakdown */}
-          {isExpanded && (
-            <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.macroExpanded}>
-              <View style={styles.macroRow}>
-                <ThemedText variant="label" color={Colors.olive}>Protein {macroP}%</ThemedText>
-              </View>
-              <View style={styles.macroRow}>
-                <ThemedText variant="label" color={Colors.orange}>Carbs {macroC}%</ThemedText>
-              </View>
-              <View style={styles.macroRow}>
-                <ThemedText variant="label" color={Colors.yellow}>Fat {macroF}%</ThemedText>
-              </View>
-
-              <ThemedText variant="labelSmall" color={theme.textMuted} align="center" style={styles.doubleTapHint}>
-                Double tap to select
-              </ThemedText>
-            </Animated.View>
-          )}
-        </Animated.View>
-      </Pressable>
-    </Animated.View>
-  );
-}
-
-// ─── Main Onboarding Screen ─────────────────────────────────────
 export default function OnboardingScreen() {
-  const { theme } = useTheme();
-  const { completeOnboarding } = useUserStore();
-
-  const [currentStep, setCurrentStep] = useState(0);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [expandedArchetype, setExpandedArchetype] = useState<ArchetypeKey | null>(null);
-  const [data, setData] = useState<StepData>({
+  const [step, setStep] = useState(0);
+  const [data, setData] = useState<StepData>(() => ({
     name: '',
     biologicalSex: null,
-    age: null,
-    weight: null,
-    height: null,
-    goal: null,
+    age: '',
+    unitPreference: detectDefaultUnit(),
+    heightCm: '',
+    heightFt: '',
+    heightIn: '',
+    weight: '',
     activityLevel: null,
     archetype: null,
-  });
+    goal: null,
+  }));
 
-  const progress = useSharedValue(0);
-  const scrollRef = useRef<FlatList>(null);
-  // Total steps: 0=Gender, 1=Archetype, 2=BodyStats, 3=Goal
-  const TOTAL_STEPS = 4;
-  const DISPLAY_STEP_OFFSET = 2; // We're steps 2-5 of 6 total (continue=1, diet=5, etc.)
+  const progress = (step + 1) / TOTAL_STEPS;
 
-  const updateData = useCallback(<K extends keyof StepData>(key: K, value: StepData[K]) => {
-    setData(prev => ({ ...prev, [key]: value }));
-  }, []);
-
-  const canProceed = useCallback((): boolean => {
-    switch (currentStep) {
-      case 0: return data.biologicalSex !== null;
-      case 1: return data.archetype !== null;
-      case 2: return (
-        data.name.trim().length >= 2 &&
-        data.age !== null && data.age >= 13 && data.age <= 120 &&
-        data.weight !== null && data.weight >= 30 && data.weight <= 300 &&
-        data.height !== null && data.height >= 100 && data.height <= 250 &&
-        data.activityLevel !== null
-      );
-      case 3: return data.goal !== null;
+  const canProceed = useMemo(() => {
+    switch (step) {
+      case 0: return data.name.trim().length >= 2;
+      case 1: return data.age.length > 0 && Number(data.age) >= 13;
+      case 2: return data.unitPreference === 'metric' || data.unitPreference === 'imperial';
+      case 3: {
+        if (data.unitPreference === 'metric') {
+          return data.heightCm.length > 0 && Number(data.heightCm) >= 100 && Number(data.heightCm) <= 250;
+        }
+        const ft = Number(data.heightFt);
+        const inch = Number(data.heightIn || '0');
+        const cm = feetInchesToCm(ft, inch);
+        return data.heightFt.length > 0 && cm >= 100 && cm <= 250 && inch >= 0 && inch < 12;
+      }
+      case 4: {
+        if (data.weight.length === 0) return false;
+        const value = Number(data.weight);
+        if (!Number.isFinite(value)) return false;
+        const kg = data.unitPreference === 'imperial' ? lbToKg(value) : value;
+        return kg >= 30 && kg <= 300;
+      }
+      case 5: return data.biologicalSex !== null;
+      case 6: return data.activityLevel !== null && data.archetype !== null;
+      case 7: return data.goal !== null;
       default: return false;
     }
-  }, [currentStep, data]);
+  }, [data, step]);
 
-  const goNext = useCallback(async () => {
-    if (!canProceed()) return;
+  const patchData = useCallback(<K extends keyof StepData>(key: K, value: StepData[K]) => {
+    setData((current) => ({ ...current, [key]: value }));
+  }, []);
 
+  const goBack = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (step === 0) router.back();
+    else setStep((current) => current - 1);
+  };
 
-    if (currentStep < TOTAL_STEPS - 1) {
-      const nextStep = currentStep + 1;
-      setCurrentStep(nextStep);
-      progress.value = withSpring((nextStep + DISPLAY_STEP_OFFSET) / 6);
-      scrollRef.current?.scrollToIndex({ index: nextStep, animated: true });
-    } else {
-      // Navigate to diet page
-      await handleProceedToDiet();
+  const goNext = () => {
+    if (!canProceed) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (step < TOTAL_STEPS - 1) {
+      setStep((current) => current + 1);
+      return;
     }
-  }, [currentStep, canProceed, progress]);
+    // Convert to SI at the boundary
+    const heightCm = data.unitPreference === 'imperial'
+      ? feetInchesToCm(Number(data.heightFt), Number(data.heightIn || '0'))
+      : Number(data.heightCm);
+    const weightKg = data.unitPreference === 'imperial'
+      ? lbToKg(Number(data.weight))
+      : Number(data.weight);
 
-  const goBack = useCallback(() => {
-    if (currentStep > 0) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const prevStep = currentStep - 1;
-      setCurrentStep(prevStep);
-      progress.value = withSpring((prevStep + DISPLAY_STEP_OFFSET) / 6);
-      scrollRef.current?.scrollToIndex({ index: prevStep, animated: true });
-    } else {
-      router.back();
-    }
-  }, [currentStep, progress]);
-
-  const handleProceedToDiet = async () => {
-    // Save data in state for now, navigate to diet screen
-    // Will pass all data to final submission
     router.push({
       pathname: '/onboarding/diet' as any,
       params: {
         name: data.name.trim(),
         biologicalSex: data.biologicalSex!,
-        age: String(data.age!),
-        weight: String(data.weight!),
-        height: String(data.height!),
+        age: data.age,
+        weight: String(weightKg.toFixed(2)),
+        height: String(heightCm.toFixed(2)),
+        unitPreference: data.unitPreference,
         goal: data.goal!,
         activityLevel: String(data.activityLevel!),
         archetype: data.archetype!,
@@ -357,493 +157,383 @@ export default function OnboardingScreen() {
     });
   };
 
-  const handleArchetypeSingleTap = (key: ArchetypeKey) => {
-    setExpandedArchetype(prev => prev === key ? null : key);
-  };
-
-  const handleArchetypeDoubleTap = (key: ArchetypeKey) => {
-    updateData('archetype', key);
-    setExpandedArchetype(key);
-    // Auto-advance after a brief moment
-    setTimeout(() => {
-      const nextStep = currentStep + 1;
-      setCurrentStep(nextStep);
-      progress.value = withSpring((nextStep + DISPLAY_STEP_OFFSET) / 6);
-      scrollRef.current?.scrollToIndex({ index: nextStep, animated: true });
-    }, 400);
-  };
-
-  useEffect(() => {
-    progress.value = withSpring((currentStep + DISPLAY_STEP_OFFSET) / 6);
-  }, []);
-
-  const progressAnimatedStyle = useAnimatedStyle(() => ({
-    width: `${progress.value * 100}%`,
-  }));
-
-  const archetypes = data.biologicalSex === 'female' ? FEMALE_ARCHETYPES : MALE_ARCHETYPES;
-
-  const renderStep = useCallback(({ item, index }: { item: number; index: number }) => {
-    switch (index) {
-      // Step 0: Gender selection
-      case 0:
-        return (
-          <StepContainer>
-            <ThemedText variant="h1" style={styles.stepTitle}>
-              Who do you want to{'\n'}become?
-            </ThemedText>
-            <ThemedText variant="body" color={theme.textMuted} style={styles.stepSubtitle}>
-              Select your biological sex to personalize your archetypes
-            </ThemedText>
-
-            <View style={styles.genderGrid}>
-              {(['female', 'male'] as const).map((sex) => (
-                <Pressable
-                  key={sex}
-                  style={[
-                    styles.genderCard,
-                    {
-                      backgroundColor: data.biologicalSex === sex ? theme.primary + '15' : theme.card,
-                      borderColor: data.biologicalSex === sex ? theme.primary : theme.border,
-                      borderWidth: data.biologicalSex === sex ? 2.5 : 1,
-                    },
-                  ]}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    updateData('biologicalSex', sex);
-                    updateData('archetype', null);
-                    setExpandedArchetype(null);
-                  }}
-                >
-                  <Image
-                    source={GENDER_IMAGES[sex]}
-                    style={styles.genderImage}
-                    resizeMode="contain"
-                  />
-                  <ThemedText
-                    variant="h3"
-                    color={data.biologicalSex === sex ? theme.primary : theme.text}
-                    align="center"
-                  >
-                    {sex === 'male' ? 'Male' : 'Female'}
-                  </ThemedText>
-                </Pressable>
-              ))}
-            </View>
-          </StepContainer>
-        );
-
-      // Step 1: Archetype selection
-      case 1:
-        return (
-          <StepContainer>
-            <ThemedText variant="h1" style={styles.stepTitle}>
-              Who do you want to{'\n'}become?
-            </ThemedText>
-            <ThemedText variant="body" color={theme.textMuted} style={styles.stepSubtitle}>
-              Choose the physical archetype that best aligns with your long-term wellness vision.
-            </ThemedText>
-
-            <View style={styles.archetypeGrid}>
-              {archetypes.map((key) => (
-                <GlowingArchetypeCard
-                  key={key}
-                  archetypeKey={key}
-                  isExpanded={expandedArchetype === key}
-                  isSelected={data.archetype === key}
-                  onSingleTap={() => handleArchetypeSingleTap(key)}
-                  onDoubleTap={() => handleArchetypeDoubleTap(key)}
-                />
-              ))}
-            </View>
-          </StepContainer>
-        );
-
-      // Step 2: Body stats (compact)
-      case 2:
-        return (
-          <StepContainer>
-            <ThemedText variant="h1" style={styles.stepTitle}>
-              Tell us about you 📋
-            </ThemedText>
-            <ThemedText variant="body" color={theme.textMuted} style={styles.stepSubtitle}>
-              We need this to calculate your personalized nutrition plan
-            </ThemedText>
-
-            {/* Name */}
-            <View style={styles.fieldGroup}>
-              <ThemedText variant="bodyMedium" style={styles.fieldLabel}>Name</ThemedText>
-              <TextInput
-                style={[styles.textInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.card }]}
-                value={data.name}
-                onChangeText={(text) => updateData('name', text)}
-                placeholder="Your name"
-                placeholderTextColor={theme.textMuted}
-              />
-            </View>
-
-            {/* Age + Weight row */}
-            <View style={styles.fieldRow}>
-              <View style={[styles.fieldGroup, { flex: 1 }]}>
-                <ThemedText variant="bodyMedium" style={styles.fieldLabel}>Age</ThemedText>
-                <TextInput
-                  style={[styles.textInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.card }]}
-                  value={data.age?.toString() ?? ''}
-                  onChangeText={(text) => updateData('age', parseInt(text) || null)}
-                  placeholder="25"
-                  placeholderTextColor={theme.textMuted}
-                  keyboardType="number-pad"
-                />
-              </View>
-              <View style={[styles.fieldGroup, { flex: 1 }]}>
-                <ThemedText variant="bodyMedium" style={styles.fieldLabel}>Weight (kg)</ThemedText>
-                <TextInput
-                  style={[styles.textInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.card }]}
-                  value={data.weight?.toString() ?? ''}
-                  onChangeText={(text) => updateData('weight', parseFloat(text) || null)}
-                  placeholder="70"
-                  placeholderTextColor={theme.textMuted}
-                  keyboardType="decimal-pad"
-                />
-              </View>
-            </View>
-
-            {/* Height */}
-            <View style={styles.fieldGroup}>
-              <ThemedText variant="bodyMedium" style={styles.fieldLabel}>Height (cm)</ThemedText>
-              <TextInput
-                style={[styles.textInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.card }]}
-                value={data.height?.toString() ?? ''}
-                onChangeText={(text) => updateData('height', parseFloat(text) || null)}
-                placeholder="170"
-                placeholderTextColor={theme.textMuted}
-                keyboardType="decimal-pad"
-              />
-            </View>
-
-            {/* Activity Level */}
-            <View style={styles.fieldGroup}>
-              <ThemedText variant="bodyMedium" style={styles.fieldLabel}>Activity Level</ThemedText>
-              <View style={styles.activityGrid}>
-                {ACTIVITY_OPTIONS.map((opt) => (
-                  <Pressable
-                    key={opt.value}
-                    style={[
-                      styles.activityChip,
-                      {
-                        backgroundColor: data.activityLevel === opt.value ? theme.primary : theme.card,
-                        borderColor: data.activityLevel === opt.value ? theme.primary : theme.border,
-                      },
-                    ]}
-                    onPress={() => updateData('activityLevel', opt.value)}
-                  >
-                    <ThemedText
-                      variant="label"
-                      color={data.activityLevel === opt.value ? 'white' : theme.text}
-                    >
-                      {opt.label}
-                    </ThemedText>
-                    <ThemedText
-                      variant="labelSmall"
-                      color={data.activityLevel === opt.value ? 'rgba(255,255,255,0.7)' : theme.textMuted}
-                    >
-                      {opt.desc}
-                    </ThemedText>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          </StepContainer>
-        );
-
-      // Step 3: Goal
-      case 3:
-        return (
-          <StepContainer>
-            <ThemedText variant="h1" style={styles.stepTitle}>
-              What's your goal? 🎯
-            </ThemedText>
-            <ThemedText variant="body" color={theme.textMuted} style={styles.stepSubtitle}>
-              This adjusts your daily calorie target
-            </ThemedText>
-            <View style={styles.goalStack}>
-              {GOAL_OPTIONS.map((option) => (
-                <Pressable
-                  key={option.value}
-                  style={[
-                    styles.goalCard,
-                    {
-                      backgroundColor: data.goal === option.value ? theme.primary : theme.card,
-                      borderColor: data.goal === option.value ? theme.primary : theme.border,
-                    },
-                  ]}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    updateData('goal', option.value as GoalType);
-                  }}
-                >
-                  <ThemedText
-                    variant="h3"
-                    color={data.goal === option.value ? 'white' : theme.text}
-                  >
-                    {option.label}
-                  </ThemedText>
-                  <ThemedText
-                    variant="body"
-                    color={data.goal === option.value ? 'rgba(255,255,255,0.8)' : theme.textMuted}
-                  >
-                    {option.desc}
-                  </ThemedText>
-                </Pressable>
-              ))}
-            </View>
-          </StepContainer>
-        );
-
-      default:
-        return null;
-    }
-  }, [data, theme, archetypes, expandedArchetype, updateData, goNext]);
+  // Steps with text input need keyboard avoidance; long card steps top-align
+  const isInputStep = step === 0 || step === 1 || step === 3 || step === 4;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+    <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
-        style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboard}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        {/* Header with back + progress */}
-        <View style={styles.headerRow}>
+        <View style={styles.header}>
           <Pressable style={styles.backButton} onPress={goBack}>
-            <Ionicons name="arrow-back" size={24} color={theme.text} />
+            <Ionicons name="arrow-back" size={22} color={Colors.brown} />
           </Pressable>
-          <View style={styles.progressSection}>
-            <ThemedText variant="label" color={theme.textMuted} style={styles.progressLabel}>
-              Progress: {currentStep + DISPLAY_STEP_OFFSET} / 6
-            </ThemedText>
-            <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>
-              <Animated.View
-                style={[styles.progressFill, { backgroundColor: Colors.olive }, progressAnimatedStyle]}
-              />
+          <View style={styles.progressWrap}>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
             </View>
+            <ThemedText variant="label" color={Colors.muted}>{step + 1} / {TOTAL_STEPS}</ThemedText>
           </View>
         </View>
 
-        {/* Steps FlatList */}
-        <FlatList
-          ref={scrollRef}
-          data={Array.from({ length: TOTAL_STEPS }, (_, i) => i)}
-          keyExtractor={(item) => item.toString()}
-          renderItem={renderStep}
-          horizontal
-          pagingEnabled
-          scrollEnabled={false}
-          showsHorizontalScrollIndicator={false}
-          getItemLayout={(_, index) => ({
-            length: SCREEN_WIDTH,
-            offset: SCREEN_WIDTH * index,
-            index,
-          })}
-        />
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            isInputStep && styles.scrollContentCentered,
+          ]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          bounces={!isInputStep}
+        >
+          <Animated.View key={step} entering={FadeInDown.springify()}>
+            {step === 0 && (
+              <Question title="What should we call you?" subtitle="NutriSnap will use this to make the app feel personal.">
+                <LargeInput value={data.name} onChangeText={(value) => patchData('name', value)} placeholder="Your name" />
+              </Question>
+            )}
 
-        {/* Continue button */}
-        <View style={styles.navigation}>
-          <Pressable
-            style={[
-              styles.continueButton,
-              {
-                backgroundColor: canProceed() ? Colors.olive : theme.border,
-              },
-            ]}
-            onPress={goNext}
-            disabled={!canProceed() || isSubmitting}
-          >
-            <ThemedText variant="button" color={canProceed() ? 'white' : theme.textMuted}>
-              Continue
-            </ThemedText>
-          </Pressable>
-        </View>
+            {step === 1 && (
+              <Question title="How old are you?" subtitle="Age helps estimate your daily energy needs.">
+                <LargeInput value={data.age} onChangeText={(value) => patchData('age', value.replace(/[^0-9]/g, ''))} placeholder="25" keyboardType="number-pad" />
+              </Question>
+            )}
+
+            {step === 2 && (
+              <Question
+                title="Which units do you prefer?"
+                subtitle="We'll show every measurement this way. You can change it later in Settings."
+              >
+                <ChoiceGrid
+                  options={UNIT_OPTIONS.map((option) => ({
+                    key: option.key,
+                    title: option.title,
+                    desc: option.desc,
+                    icon: option.icon,
+                  }))}
+                  selected={data.unitPreference}
+                  onSelect={(value) => patchData('unitPreference', value as UnitPreference)}
+                />
+              </Question>
+            )}
+
+            {step === 3 && (
+              <Question
+                title="What is your height?"
+                subtitle={data.unitPreference === 'metric' ? 'Enter your height in centimeters.' : 'Enter your height in feet and inches.'}
+              >
+                {data.unitPreference === 'metric' ? (
+                  <LargeInput
+                    value={data.heightCm}
+                    onChangeText={(value) => patchData('heightCm', value.replace(/[^0-9.]/g, ''))}
+                    placeholder="170"
+                    keyboardType="decimal-pad"
+                    suffix="cm"
+                  />
+                ) : (
+                  <View style={styles.dualInputRow}>
+                    <LargeInput
+                      value={data.heightFt}
+                      onChangeText={(value) => patchData('heightFt', value.replace(/[^0-9]/g, ''))}
+                      placeholder="5"
+                      keyboardType="number-pad"
+                      suffix="ft"
+                      containerStyle={styles.dualInputCell}
+                    />
+                    <LargeInput
+                      value={data.heightIn}
+                      onChangeText={(value) => {
+                        const cleaned = value.replace(/[^0-9]/g, '');
+                        // Clamp to 0–11
+                        const num = Number(cleaned);
+                        if (cleaned === '' || num <= 11) patchData('heightIn', cleaned);
+                      }}
+                      placeholder="9"
+                      keyboardType="number-pad"
+                      suffix="in"
+                      containerStyle={styles.dualInputCell}
+                    />
+                  </View>
+                )}
+              </Question>
+            )}
+
+            {step === 4 && (
+              <Question
+                title="What is your weight?"
+                subtitle={data.unitPreference === 'metric' ? 'Enter your weight in kilograms.' : 'Enter your weight in pounds.'}
+              >
+                <LargeInput
+                  value={data.weight}
+                  onChangeText={(value) => patchData('weight', value.replace(/[^0-9.]/g, ''))}
+                  placeholder={data.unitPreference === 'metric' ? '70' : '155'}
+                  keyboardType="decimal-pad"
+                  suffix={data.unitPreference === 'metric' ? 'kg' : 'lb'}
+                />
+              </Question>
+            )}
+
+            {step === 5 && (
+              <Question title="Choose your biological sex" subtitle="This is only used for nutrition estimates.">
+                <ChoiceGrid
+                  options={[
+                    { key: 'female', title: 'Female', desc: 'Use female baseline estimates.', icon: 'female-outline' },
+                    { key: 'male', title: 'Male', desc: 'Use male baseline estimates.', icon: 'male-outline' },
+                  ]}
+                  selected={data.biologicalSex}
+                  onSelect={(value) => patchData('biologicalSex', value as BiologicalSex)}
+                />
+              </Question>
+            )}
+
+            {step === 6 && (
+              <Question title="Pick your nutrition style" subtitle="This keeps the existing personalization logic, with a simpler face.">
+                <ChoiceGrid
+                  options={NUTRITION_STYLES.map((style) => ({ key: style.key, title: style.title, desc: style.desc, icon: style.icon }))}
+                  selected={data.archetype}
+                  onSelect={(value) => {
+                    patchData('archetype', value as ArchetypeKey);
+                    if (!data.activityLevel) patchData('activityLevel', 3);
+                  }}
+                />
+                <View style={styles.activityStack}>
+                  <ThemedText variant="bodySemiBold">Activity level</ThemedText>
+                  {ACTIVITY_OPTIONS.map((option) => (
+                    <Pressable
+                      key={option.value}
+                      style={[styles.activityRow, data.activityLevel === option.value && styles.choiceSelected]}
+                      onPress={() => patchData('activityLevel', option.value)}
+                    >
+                      <View>
+                        <ThemedText variant="bodySemiBold">{option.title}</ThemedText>
+                        <ThemedText variant="label" color={Colors.muted}>{option.desc}</ThemedText>
+                      </View>
+                      {data.activityLevel === option.value && <Ionicons name="checkmark-circle" size={22} color={Colors.olive} />}
+                    </Pressable>
+                  ))}
+                </View>
+              </Question>
+            )}
+
+            {step === 7 && (
+              <Question title="What is your goal?" subtitle="This adjusts your calorie target using the existing calculation.">
+                <ChoiceGrid
+                  options={GOAL_OPTIONS.map((goal) => ({ key: goal.value, title: goal.title, desc: goal.desc, icon: 'flag-outline' as const }))}
+                  selected={data.goal}
+                  onSelect={(value) => patchData('goal', value as GoalType)}
+                />
+              </Question>
+            )}
+          </Animated.View>
+
+          <View style={styles.footer}>
+            <Pressable style={[styles.continueButton, !canProceed && styles.continueDisabled]} onPress={goNext} disabled={!canProceed}>
+              <ThemedText variant="button" color={canProceed ? Colors.white : Colors.muted}>
+                Continue
+              </ThemedText>
+              <Ionicons name="arrow-forward" size={18} color={canProceed ? Colors.white : Colors.muted} />
+            </Pressable>
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-function StepContainer({ children }: { children: React.ReactNode }) {
+function Question({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
-    <ScrollView
-      style={styles.stepContainer}
-      contentContainerStyle={styles.stepContent}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
+    <View style={styles.question}>
+      <ThemedText variant="h1" style={styles.title}>{title}</ThemedText>
+      <ThemedText variant="body" color={Colors.muted} style={styles.subtitle}>{subtitle}</ThemedText>
       {children}
-    </ScrollView>
+    </View>
+  );
+}
+
+function LargeInput(props: React.ComponentProps<typeof TextInput> & {
+  suffix?: string;
+  containerStyle?: object;
+}) {
+  const { suffix, style, containerStyle, ...rest } = props;
+  return (
+    <View style={[styles.inputWrap, containerStyle]}>
+      <TextInput
+        {...rest}
+        placeholderTextColor={Colors.muted}
+        style={[styles.largeInput, style]}
+      />
+      {suffix && <ThemedText variant="h3" color={Colors.muted}>{suffix}</ThemedText>}
+    </View>
+  );
+}
+
+function ChoiceGrid({
+  options,
+  selected,
+  onSelect,
+}: {
+  options: Array<{ key: string; title: string; desc: string; icon: keyof typeof Ionicons.glyphMap }>;
+  selected: string | null;
+  onSelect: (key: string) => void;
+}) {
+  return (
+    <View style={styles.choiceGrid}>
+      {options.map((option) => {
+        const active = selected === option.key;
+        return (
+          <Pressable key={option.key} style={[styles.choiceCard, active && styles.choiceSelected]} onPress={() => onSelect(option.key)}>
+            <View style={[styles.choiceIcon, active && styles.choiceIconActive]}>
+              <Ionicons name={option.icon} size={22} color={active ? Colors.white : Colors.olive} />
+            </View>
+            <ThemedText variant="bodySemiBold">{option.title}</ThemedText>
+            <ThemedText variant="label" color={Colors.muted}>{option.desc}</ThemedText>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: Colors.background,
   },
-  keyboardView: {
+  keyboard: {
     flex: 1,
   },
-  headerRow: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: Spacing.md,
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.md,
-    gap: Spacing.md,
   },
   backButton: {
-    padding: Spacing.xs,
-  },
-  progressSection: {
-    flex: 1,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: Colors.white,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  progressLabel: {
-    marginBottom: Spacing.xs,
-    letterSpacing: 0.5,
+  progressWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
   },
   progressTrack: {
-    width: '100%',
-    height: 6,
-    borderRadius: 3,
+    flex: 1,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.border,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    borderRadius: 3,
+    borderRadius: 4,
+    backgroundColor: Colors.olive,
   },
-  stepContainer: {
-    width: SCREEN_WIDTH,
-  },
-  stepContent: {
+  scrollContent: {
+    flexGrow: 1,
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.xl,
-    paddingBottom: Spacing['5xl'],
-  },
-  stepTitle: {
-    marginBottom: Spacing.md,
-    fontSize: 28,
-    lineHeight: 36,
-  },
-  stepSubtitle: {
-    marginBottom: Spacing.xl,
-    lineHeight: 22,
-  },
-  // Gender selection
-  genderGrid: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-    marginTop: Spacing.md,
-  },
-  genderCard: {
-    flex: 1,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.xl,
-    alignItems: 'center',
-    gap: Spacing.md,
-  },
-  genderImage: {
-    width: 100,
-    height: 130,
-  },
-  // Archetype grid
-  archetypeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.md,
-    justifyContent: 'center',
-  },
-  archetypeCard: {
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.base,
-    alignItems: 'center',
-  },
-  archetypeImageContainer: {
-    width: 80,
-    height: 80,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: Spacing.sm,
-  },
-  archetypeImage: {
-    width: 80,
-    height: 80,
-  },
-  archetypeName: {
-    marginBottom: Spacing.xs,
-  },
-  archetypeBadge: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.sm,
-    marginBottom: Spacing.sm,
-  },
-  archetypeDesc: {
-    fontSize: 11,
-    lineHeight: 16,
-  },
-  macroExpanded: {
-    marginTop: Spacing.md,
-    gap: Spacing.xs,
-    width: '100%',
-  },
-  macroRow: {
-    paddingVertical: 2,
-  },
-  doubleTapHint: {
-    marginTop: Spacing.sm,
-    fontStyle: 'italic',
-  },
-  // Body stats
-  fieldGroup: {
-    marginBottom: Spacing.base,
-  },
-  fieldLabel: {
-    marginBottom: Spacing.sm,
-  },
-  fieldRow: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-  },
-  textInput: {
-    fontSize: 16,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.base,
-    borderWidth: 1,
-    borderRadius: BorderRadius.md,
-    fontFamily: 'Inter_500Medium',
-  },
-  activityGrid: {
-    gap: Spacing.sm,
-  },
-  activityChip: {
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.base,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-  },
-  // Goal
-  goalStack: {
-    gap: Spacing.md,
-  },
-  goalCard: {
-    padding: Spacing.xl,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 2,
-    gap: Spacing.xs,
-  },
-  // Navigation
-  navigation: {
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.base,
     paddingBottom: Spacing.xl,
   },
-  continueButton: {
-    paddingVertical: Spacing.base,
-    borderRadius: BorderRadius.md,
+  scrollContentCentered: {
+    justifyContent: 'center',
+  },
+  question: {
+    gap: Spacing.lg,
+  },
+  title: {
+    fontSize: 34,
+    lineHeight: 41,
+  },
+  subtitle: {
+    maxWidth: 320,
+  },
+  inputWrap: {
+    minHeight: 76,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.lg,
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: Spacing.md,
+  },
+  dualInputRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  dualInputCell: {
+    flex: 1,
+  },
+  largeInput: {
+    flex: 1,
+    fontSize: 30,
+    fontFamily: 'Nunito_800ExtraBold',
+    color: Colors.brown,
+  },
+  choiceGrid: {
+    gap: Spacing.md,
+  },
+  choiceCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  choiceSelected: {
+    borderColor: Colors.olive,
+    backgroundColor: Colors.oliveLight,
+  },
+  choiceIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: Colors.oliveLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  choiceIconActive: {
+    backgroundColor: Colors.olive,
+  },
+  activityStack: {
+    marginTop: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  activityRow: {
+    minHeight: 58,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.base,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  footer: {
+    paddingTop: Spacing['2xl'],
+    paddingBottom: Spacing.md,
+  },
+  continueButton: {
+    minHeight: 54,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.orange,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  continueDisabled: {
+    backgroundColor: Colors.border,
   },
 });

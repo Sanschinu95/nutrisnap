@@ -1,366 +1,173 @@
-/**
- * Transition / Social Proof screen
- * Inspired by: assets/UI mockups/transition.png
- * Shows community stats and testimonial before plan reveal
- */
-
 import { useEffect, useState } from 'react';
-import { View, StyleSheet, Dimensions, Pressable } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import Animated, {
-  FadeInDown,
-  FadeIn,
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  Easing,
-} from 'react-native-reanimated';
+import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { ThemedText } from '@/components/ui/ThemedText';
-import { useTheme } from '@/hooks/useTheme';
 import { useUserStore } from '@/stores/user.store';
-import { Spacing, BorderRadius, Colors } from '@/constants/theme';
+import { BorderRadius, Colors, Spacing } from '@/constants/theme';
 import type { ArchetypeKey } from '@/constants/archetypes';
-import type { GoalType, BiologicalSex } from '@/types/archetype';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+import type { BiologicalSex, GoalType } from '@/types/archetype';
+import type { UnitPreference } from '@/lib/units';
 
 export default function TransitionScreen() {
-  const { theme } = useTheme();
   const params = useLocalSearchParams();
   const { completeOnboarding } = useUserStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Progress bar animation
-  const progressWidth = useSharedValue(0);
+  const progress = useSharedValue(0);
 
   useEffect(() => {
-    progressWidth.value = withTiming(83, { duration: 1200, easing: Easing.out(Easing.cubic) });
-  }, []);
+    progress.value = withTiming(1, { duration: 1200 });
+  }, [progress]);
 
   const progressStyle = useAnimatedStyle(() => ({
-    width: `${progressWidth.value}%`,
+    width: `${progress.value * 100}%`,
   }));
 
   const handleBuildPlan = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
+    setIsSubmitting(true);
     try {
-      setIsSubmitting(true);
-
-      // Complete onboarding with all collected data
+      const unitPreference = (params.unitPreference as UnitPreference) === 'imperial'
+        ? 'imperial'
+        : 'metric';
       const result = await completeOnboarding({
         name: (params.name as string) || 'User',
         biological_sex: (params.biologicalSex as BiologicalSex) || 'male',
-        age: parseInt(params.age as string) || 25,
+        age: parseInt(params.age as string, 10) || 25,
         weight_kg: parseFloat(params.weight as string) || 70,
         height_cm: parseFloat(params.height as string) || 170,
         goal_type: (params.goal as GoalType) || 'maintain',
-        activity_level: parseInt(params.activityLevel as string) || 3,
-        archetype: (params.archetype as ArchetypeKey) || 'wolf',
+        activity_level: parseInt(params.activityLevel as string, 10) || 3,
+        archetype: (params.archetype as ArchetypeKey) || 'lion',
+        unit_preference: unitPreference,
       });
-
-      if (result.success) {
-        router.replace({
-          pathname: '/future-you',
-          params: { archetype: params.archetype as string },
-        });
-      } else {
-        // Even if DB fails, proceed to future-you for demo
-        console.error('Onboarding save error:', result.error);
-        router.replace({
-          pathname: '/future-you',
-          params: { archetype: params.archetype as string },
-        });
-      }
+      if (!result.success) console.warn('Onboarding save error:', result.error);
+      router.replace('/future-you');
     } catch (error) {
       console.error('Transition error:', error);
-      router.replace({
-        pathname: '/future-you',
-        params: { archetype: params.archetype as string },
-      });
+      router.replace('/future-you');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Header */}
-      <Animated.View entering={FadeIn.delay(100).duration(500)} style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Ionicons name="leaf" size={20} color={Colors.olive} />
-          <ThemedText variant="bodyMedium" color={Colors.olive} style={styles.brandName}>
-            NutriSnap
-          </ThemedText>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <View style={styles.logoMark}>
+          <Ionicons name="leaf-outline" size={22} color={Colors.olive} />
         </View>
-        <Ionicons name="notifications-outline" size={22} color={theme.textMuted} />
-      </Animated.View>
+        <ThemedText variant="bodySemiBold" color={Colors.olive}>NutriSnap</ThemedText>
+      </View>
 
-      {/* Progress bar */}
-      <Animated.View entering={FadeIn.delay(200).duration(500)} style={styles.progressContainer}>
-        <View style={styles.progressRow}>
-          <ThemedText variant="label" color={theme.textMuted}>Progress</ThemedText>
-          <ThemedText variant="label" color={theme.textMuted}>5 / 6</ThemedText>
+      <Animated.View entering={FadeInDown.springify()} style={styles.content}>
+        <View style={styles.progressShell}>
+          <Animated.View style={[styles.progressFill, progressStyle]} />
         </View>
-        <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>
-          <Animated.View style={[styles.progressFill, { backgroundColor: Colors.olive }, progressStyle]} />
-        </View>
-      </Animated.View>
-
-      {/* Main content */}
-      <Animated.View entering={FadeInDown.delay(300).springify()} style={styles.content}>
-        <ThemedText variant="h1" align="center" style={styles.heading}>
-          Join Thousands{'\n'}Snapping With{'\n'}NutriSnap
+        <ThemedText variant="h1" align="center" style={styles.title}>
+          Your food companion is almost ready.
         </ThemedText>
-        <ThemedText
-          variant="body"
-          color={theme.textMuted}
-          align="center"
-          style={styles.subtitle}
-        >
-          Real people, real transformations. Your journey to a healthier you starts with a community that supports every bite.
+        <ThemedText variant="body" color={Colors.muted} align="center" style={styles.subtitle}>
+          We are preparing your calorie target, macro guide, hydration rhythm, and daily route.
         </ThemedText>
-      </Animated.View>
 
-      {/* Stats Row */}
-      <Animated.View entering={FadeInDown.delay(500).springify()} style={styles.statsRow}>
-        <View style={[styles.statCard, { backgroundColor: theme.card }]}>
-          <View style={[styles.statIconCircle, { backgroundColor: Colors.olive + '20' }]}>
-            <Ionicons name="restaurant-outline" size={22} color={Colors.olive} />
-          </View>
-          <ThemedText variant="h2" color={Colors.olive}>100K+</ThemedText>
-          <ThemedText variant="label" color={theme.textMuted}>MEALS LOGGED</ThemedText>
-        </View>
-        <View style={[styles.statCard, { backgroundColor: theme.card }]}>
-          <View style={[styles.statIconCircle, { backgroundColor: Colors.orange + '20' }]}>
-            <Ionicons name="camera-outline" size={22} color={Colors.orange} />
-          </View>
-          <ThemedText variant="h2" color={Colors.orange}>50K+</ThemedText>
-          <ThemedText variant="label" color={theme.textMuted}>FOOD SCANS</ThemedText>
+        <View style={styles.previewCard}>
+          <PreviewRow icon="flame-outline" label="Calories" />
+          <PreviewRow icon="pulse-outline" label="Macros" />
+          <PreviewRow icon="water-outline" label="Hydration" />
+          <PreviewRow icon="git-branch-outline" label="Nutrition route" />
         </View>
       </Animated.View>
 
-      {/* Community stat */}
-      <Animated.View entering={FadeInDown.delay(650).springify()} style={styles.communityCard}>
-        <View style={[styles.communityInner, { backgroundColor: Colors.oliveLight + '30' }]}>
-          <View style={styles.communityAvatars}>
-            {['🧑‍🍳', '👩‍⚕️', '🧑‍💼', '👩‍🔬'].map((emoji, i) => (
-              <View
-                key={i}
-                style={[styles.avatarCircle, { backgroundColor: theme.card, marginLeft: i > 0 ? -8 : 0 }]}
-              >
-                <ThemedText style={styles.avatarEmoji}>{emoji}</ThemedText>
-              </View>
-            ))}
-            <View style={[styles.avatarCircle, { backgroundColor: Colors.olive, marginLeft: -8 }]}>
-              <ThemedText variant="labelSmall" color="white">+12k</ThemedText>
-            </View>
-          </View>
-          <View style={styles.communityText}>
-            <ThemedText variant="bodyMedium">1M+ Calories</ThemedText>
-            <ThemedText variant="label" color={theme.textMuted}>
-              Tracked by our growing community this month.
-            </ThemedText>
-          </View>
-        </View>
-      </Animated.View>
-
-      {/* Testimonial */}
-      <Animated.View entering={FadeInDown.delay(800).springify()} style={styles.testimonialCard}>
-        <View style={[styles.testimonialInner, { backgroundColor: theme.card }]}>
-          <View style={[styles.testimonialAvatar, { backgroundColor: Colors.oliveLight + '40' }]}>
-            <ThemedText style={styles.testimonialEmoji}>🌟</ThemedText>
-          </View>
-          <ThemedText variant="h3" color={Colors.olive} align="center" style={styles.testimonialScore}>
-            99
-          </ThemedText>
-          <ThemedText
-            variant="body"
-            color={theme.textSecondary}
-            align="center"
-            style={styles.testimonialQuote}
-          >
-            "NutriSnap changed how I look at food. It's not about restriction anymore; it's about awareness and the community keeps me coming back every single day."
-          </ThemedText>
-          <ThemedText variant="label" color={theme.textMuted} align="center" style={styles.testimonialAuthor}>
-            — Amy R., Lost 15lbs & Gained Confidence
-          </ThemedText>
-        </View>
-      </Animated.View>
-
-      {/* CTA Button */}
-      <Animated.View entering={FadeInDown.delay(1000).springify()} style={styles.ctaSection}>
-        <Pressable
-          style={[styles.ctaButton, { backgroundColor: Colors.orange }]}
-          onPress={handleBuildPlan}
-          disabled={isSubmitting}
-        >
-          <ThemedText variant="button" color="white" style={styles.ctaText}>
-            {isSubmitting ? 'Building Your Plan...' : "Let's Build Your Plan"}
+      <View style={styles.footer}>
+        <Pressable style={styles.ctaButton} onPress={handleBuildPlan} disabled={isSubmitting}>
+          <ThemedText variant="button" color="white">
+            {isSubmitting ? 'Preparing...' : 'Enter NutriSnap'}
           </ThemedText>
         </Pressable>
-        <ThemedText variant="label" color={theme.textMuted} align="center" style={styles.ctaFooter}>
-          Free for 7 days. Join over 150,000+ active members.
-        </ThemedText>
-      </Animated.View>
+      </View>
     </SafeAreaView>
+  );
+}
+
+function PreviewRow({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) {
+  return (
+    <View style={styles.previewRow}>
+      <Ionicons name={icon} size={20} color={Colors.olive} />
+      <ThemedText variant="bodyMedium">{label}</ThemedText>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: Colors.background,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.md,
-  },
-  headerLeft: {
+    paddingVertical: Spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
   },
-  brandName: {
-    fontSize: 16,
-    fontWeight: '700',
+  logoMark: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  progressContainer: {
+  content: {
+    flex: 1,
     paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.xl,
+    justifyContent: 'center',
+    gap: Spacing.xl,
   },
-  progressRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.xs,
-  },
-  progressTrack: {
-    height: 6,
-    borderRadius: 3,
+  progressShell: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.border,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    borderRadius: 3,
+    borderRadius: 4,
+    backgroundColor: Colors.olive,
   },
-  content: {
-    paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.xl,
-  },
-  heading: {
-    fontSize: 26,
-    lineHeight: 34,
-    marginBottom: Spacing.md,
+  title: {
+    fontSize: 34,
+    lineHeight: 41,
   },
   subtitle: {
     maxWidth: 320,
     alignSelf: 'center',
-    lineHeight: 22,
   },
-  statsRow: {
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.xl,
-    gap: Spacing.md,
-    marginBottom: Spacing.md,
-  },
-  statCard: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: Spacing.base,
-    borderRadius: BorderRadius.md,
-    gap: Spacing.xs,
-  },
-  statIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: Spacing.xs,
-  },
-  communityCard: {
-    paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.md,
-  },
-  communityInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: Spacing.base,
-    borderRadius: BorderRadius.md,
+  previewCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.lg,
     gap: Spacing.md,
   },
-  communityAvatars: {
+  previewRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: Spacing.md,
   },
-  avatarCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'white',
-  },
-  avatarEmoji: {
-    fontSize: 16,
-  },
-  communityText: {
-    flex: 1,
-  },
-  testimonialCard: {
-    paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.md,
-  },
-  testimonialInner: {
-    padding: Spacing.base,
-    borderRadius: BorderRadius.md,
-    alignItems: 'center',
-  },
-  testimonialAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: Spacing.sm,
-  },
-  testimonialEmoji: {
-    fontSize: 24,
-  },
-  testimonialScore: {
-    marginBottom: Spacing.sm,
-  },
-  testimonialQuote: {
-    fontSize: 13,
-    lineHeight: 20,
-    fontStyle: 'italic',
-    marginBottom: Spacing.sm,
-    maxWidth: 300,
-  },
-  testimonialAuthor: {
-    fontSize: 11,
-  },
-  ctaSection: {
-    paddingHorizontal: Spacing.xl,
-    marginTop: 'auto',
-    paddingBottom: Spacing.xl,
+  footer: {
+    padding: Spacing.xl,
   },
   ctaButton: {
-    paddingVertical: Spacing.base,
+    minHeight: 54,
     borderRadius: BorderRadius.md,
+    backgroundColor: Colors.orange,
     alignItems: 'center',
-  },
-  ctaText: {
-    fontSize: 16,
-  },
-  ctaFooter: {
-    marginTop: Spacing.sm,
-    fontSize: 11,
+    justifyContent: 'center',
   },
 });

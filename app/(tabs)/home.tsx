@@ -1,836 +1,664 @@
-/**
- * Home tab - Redesigned Daily Summary screen
- * Inspired by: assets/UI mockups/home.png (light) & home dark.png (dark)
- *
- * Layout: Header → Concentric rings card → Streak → Hydration → Steps → Today's meals → Nutridex explorer
- */
-
-import { useEffect, useCallback } from 'react';
-import { View, StyleSheet, ScrollView, Pressable, FlatList, Dimensions, Image, type ImageSourcePropType } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import BottomSheet, { BottomSheetView } from '@gorhom/bottom-sheet';
 import { ThemedText } from '@/components/ui/ThemedText';
-import { Card } from '@/components/ui/Card';
-import { ConcentricRing } from '@/components/ui/ConcentricRing';
+import { CalorieRing } from '@/components/ui/CalorieRing';
+import { HydrationJar } from '@/components/ui/HydrationJar';
+import { NutritionRouteChart, type ChartMode, type RouteDataPoint } from '@/components/ui/NutritionRouteChart';
+import { ChartModeSwitcher } from '@/components/ui/ChartModeSwitcher';
+import { FeedbackModal } from '@/components/ui/FeedbackModal';
 import { SkeletonCard } from '@/components/ui/SkeletonLoader';
 import { useTheme } from '@/hooks/useTheme';
+import { useWaterSound } from '@/hooks/useWaterSound';
 import { useUserStore } from '@/stores/user.store';
 import { useDailyStore } from '@/stores/daily.store';
-import { getArchetype, type ArchetypeKey } from '@/constants/archetypes';
-import { Spacing, Colors, BorderRadius, Shadows } from '@/constants/theme';
-import { WATER_GLASS_ML } from '@/constants/nutrients';
+import { useAuthGate } from '@/hooks/useAuthGate';
+import { shouldShowFeedback } from '@/lib/feedback';
+import { BorderRadius, Colors, Shadows, Spacing } from '@/constants/theme';
+import { formatVolume, getWaterQuickAdds } from '@/lib/units';
+import type { FoodEntry } from '@/types/nutrition';
+import { trackEvent } from '@/lib/telemetry';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const WATER_CUPS = 6;
-
-const ARCHETYPE_ART: Record<ArchetypeKey, ImageSourcePropType> = {
-  wolf: require('@/assets/archetypes/wolf.png'),
-  bear: require('@/assets/archetypes/bear.png'),
-  lion: require('@/assets/archetypes/lion.png'),
-  deer: require('@/assets/archetypes/deer.png'),
-  tigress: require('@/assets/archetypes/tigress.png'),
-  phoenix: require('@/assets/archetypes/phoenix.png'),
-  doe: require('@/assets/archetypes/doe.png'),
-  swan: require('@/assets/archetypes/swan.png'),
-};
-
-const ARCHETYPE_HEADLINES: Record<ArchetypeKey, string> = {
-  wolf: 'Hunt With Focus',
-  bear: 'Build Steady Power',
-  lion: 'Lead With Discipline',
-  deer: 'Move With Lightness',
-  tigress: 'Fuel The Fire',
-  phoenix: 'Rise Again Today',
-  doe: 'Gentle Progress Matters',
-  swan: 'Balance Creates Beauty',
-};
-
-const COACH_LINES: Record<ArchetypeKey, string> = {
-  wolf: 'Every meal sharpens the hunt.',
-  bear: 'Strength grows from steady fuel.',
-  lion: 'Command the next choice.',
-  deer: 'Light steps still carry you forward.',
-  tigress: "Tigresses don't skip meals.",
-  phoenix: 'Every meal is a chance to rise.',
-  doe: 'Consistency beats perfection.',
-  swan: 'Small choices create elegant results.',
-};
-
-const HYDRATION_LINES: Record<ArchetypeKey, string> = {
-  wolf: 'Stay sharp for the hunt.',
-  bear: 'Power needs water.',
-  lion: 'Discipline starts with basics.',
-  deer: 'Nourish your roots.',
-  tigress: 'Hydration powers performance.',
-  phoenix: 'Fuel the flame.',
-  doe: 'Nourish your roots.',
-  swan: 'Balance starts with water.',
-};
-
-const COMMUNITY_LINES: Record<ArchetypeKey, string> = {
-  wolf: '614 Wolves logged meals today.',
-  bear: '428 Bears stayed on plan today.',
-  lion: '376 Lions kept their streak alive.',
-  deer: '512 Deer completed a clean meal today.',
-  tigress: '520 Tigresses hit protein targets.',
-  phoenix: '842 Phoenixes logged meals today.',
-  doe: '467 Does chose steady progress today.',
-  swan: '134 Swans completed hydration goals.',
-};
-
-const FUEL_FACTS = [
-  "Today's calories could power a 15km bike ride.",
-  'Enough energy to climb 90 floors.',
-  'Enough energy for a 30-minute swim.',
-];
+type RingMetric = 'calories' | 'protein' | 'carbs' | 'fat';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
   if (hour < 12) return 'Good Morning';
   if (hour < 17) return 'Good Afternoon';
-  return 'Evening';
+  return 'Good Evening';
 }
 
-function getDailyInsight(
-  entriesCount: number,
-  proteinRemaining: number,
-  waterMl: number,
-  calorieProgress: number,
-): string {
-  if (entriesCount === 0) return "Today's choices build tomorrow's results.";
-  if (proteinRemaining > 0) return `You're ${proteinRemaining}g away from today's protein goal.`;
-  if (waterMl < 1500) return 'Hydration is still building today.';
-  if (calorieProgress >= 0.8) return "You're close to today's energy target.";
-  return `You've logged ${entriesCount} meal${entriesCount === 1 ? '' : 's'} today.`;
+function getDailyInsight(entries: FoodEntry[], proteinProgress: number, hydrationProgress: number): string {
+  if (entries.length === 0) return 'Start with one scan and let the day take shape.';
+  if (entries.some((entry) => new Date(entry.logged_at).getHours() < 11) && proteinProgress >= 0.5) {
+    return 'Protein looks steadier when breakfast is part of the route.';
+  }
+  if (hydrationProgress >= 0.6) return 'Hydration improved the rhythm of today.';
+  return 'Your next small win is water before the next meal.';
 }
 
-function getScoreLabel(score: number): string {
-  if (score >= 80) return 'Excellent';
-  if (score >= 60) return 'Good';
-  return 'Building';
+function getInitials(name?: string | null): string {
+  return name
+    ? name.split(' ').map((part) => part[0]).join('').toUpperCase().slice(0, 2)
+    : '?';
 }
+
+const METRIC_CONFIG: Record<RingMetric, { label: string; color: string }> = {
+  calories: { label: 'Calories Left', color: Colors.olive },
+  protein: { label: 'Protein', color: Colors.olive },
+  carbs: { label: 'Carbs', color: Colors.orange },
+  fat: { label: 'Fat', color: Colors.brownMid },
+};
 
 export default function HomeScreen() {
-  const { theme, isDark } = useTheme();
-  const { profile, archetype, calorieGoal, macroGoals, streak } = useUserStore();
-  const { entries, summary, waterMl, addWater, loadToday } = useDailyStore();
+  const { theme } = useTheme();
+  const { profile, calorieGoal, macroGoals, streak, hydrationGoalMl } = useUserStore();
+  const { entries, summary, waterMl, addWater, removeEntry, loadToday } = useDailyStore();
+  const { requireAuth } = useAuthGate();
+  const [selectedEntry, setSelectedEntry] = useState<FoodEntry | null>(null);
+  const [chartMode, setChartMode] = useState<ChartMode>('spline');
+  const [activeRingMetric, setActiveRingMetric] = useState<RingMetric>('calories');
+  const [showFeedback, setShowFeedback] = useState(false);
+  const bottomSheetRef = useRef<BottomSheet>(null);
+  const { playWaterSound } = useWaterSound();
+
+  // Transform FoodEntry[] â†’ RouteDataPoint[] for the chart component
+  const routeData: RouteDataPoint[] = useMemo(
+    () => entries.map((e) => ({
+      timestamp: e.occurred_at_local ?? e.logged_at,
+      calories: e.total_calories,
+      mealId: e.id,
+      thumbnailUrl: e.image_url ?? undefined,
+      source: e.source,
+    })),
+    [entries],
+  );
+
+  const handleNodePress = useCallback((mealId: string) => {
+    const entry = entries.find((e) => e.id === mealId);
+    if (entry) setSelectedEntry(entry);
+  }, [entries]);
 
   useEffect(() => {
     loadToday();
+    trackEvent('route_viewed', { surface: 'home' });
+    // Check if we should show the daily feedback modal
+    shouldShowFeedback().then((show) => {
+      if (show) setShowFeedback(true);
+    });
   }, [loadToday]);
 
-  const archetypeInfo = archetype ? getArchetype(archetype) : null;
+  useEffect(() => {
+    if (selectedEntry) {
+      trackEvent('route_node_expanded', { meal_id: selectedEntry.id });
+      bottomSheetRef.current?.snapToIndex(0);
+    }
+  }, [selectedEntry]);
 
   const totalCalories = summary?.total_calories ?? 0;
   const totalProtein = summary?.total_protein ?? 0;
   const totalCarbs = summary?.total_carbs ?? 0;
   const totalFat = summary?.total_fat ?? 0;
-
   const caloriesLeft = Math.max(0, calorieGoal - totalCalories);
   const calProgress = calorieGoal > 0 ? Math.min(1, totalCalories / calorieGoal) : 0;
   const proteinProgress = macroGoals.protein > 0 ? Math.min(1, totalProtein / macroGoals.protein) : 0;
   const carbsProgress = macroGoals.carbs > 0 ? Math.min(1, totalCarbs / macroGoals.carbs) : 0;
   const fatProgress = macroGoals.fat > 0 ? Math.min(1, totalFat / macroGoals.fat) : 0;
-
-  const waterLiters = (waterMl / 1000).toFixed(1);
-  const waterGoalLiters = '2.5';
-  const waterCupsFilled = Math.min(WATER_CUPS, Math.floor(waterMl / WATER_GLASS_ML));
-  const hydrationProgress = Math.min(1, waterMl / 2500);
-  const proteinRemaining = Math.max(0, Math.round(macroGoals.protein - totalProtein));
-  const nutriScore = Math.round(
-    ((proteinProgress * 0.4) + (hydrationProgress * 0.3) + ((calProgress > 1 ? Math.max(0, 2 - calProgress) : calProgress) * 0.3)) * 100
-  );
-  const insight = getDailyInsight(entries.length, proteinRemaining, waterMl, calProgress);
-  const fuelFact = FUEL_FACTS[new Date().getDate() % FUEL_FACTS.length];
-
-  const rechargePercent = Math.round(calProgress * 100);
+  const hydrationProgress = Math.min(1, waterMl / hydrationGoalMl);
+  const unitPref = profile?.unit_preference ?? 'metric';
+  const waterDisplay = formatVolume(waterMl, unitPref);
+  const hydrationGoalDisplay = formatVolume(hydrationGoalMl, unitPref);
+  const quickAddMl = getWaterQuickAdds(unitPref)[0].ml;
   const userName = profile?.name?.split(' ')[0] ?? 'there';
+  const insight = useMemo(
+    () => getDailyInsight(entries, proteinProgress, hydrationProgress),
+    [entries, hydrationProgress, proteinProgress]
+  );
+
+  // Build ring + row data based on which metric is active
+  const metricData: Record<RingMetric, { value: string; progress: number }> = {
+    calories: { value: caloriesLeft.toLocaleString(), progress: calProgress },
+    protein: { value: `${Math.round(totalProtein)}g`, progress: proteinProgress },
+    carbs: { value: `${Math.round(totalCarbs)}g`, progress: carbsProgress },
+    fat: { value: `${Math.round(totalFat)}g`, progress: fatProgress },
+  };
+
+  const activeConfig = METRIC_CONFIG[activeRingMetric];
+  const activeData = metricData[activeRingMetric];
+  const rowMetrics = (['calories', 'protein', 'carbs', 'fat'] as RingMetric[]).filter(
+    (m) => m !== activeRingMetric,
+  );
+
+  const handleSwapMetric = useCallback((metric: RingMetric) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setActiveRingMetric(metric);
+  }, []);
 
   const handleAddWater = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    addWater(WATER_GLASS_ML);
-  }, [addWater]);
+    requireAuth(async () => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      addWater(quickAddMl);
+      playWaterSound();
+    });
+  }, [addWater, playWaterSound, requireAuth, quickAddMl]);
+
+  const handleDelete = useCallback(() => {
+    if (!selectedEntry) return;
+    requireAuth(async () => {
+      Alert.alert('Delete meal', 'Remove this meal from today?', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await removeEntry(selectedEntry.id);
+            setSelectedEntry(null);
+            bottomSheetRef.current?.close();
+          },
+        },
+      ]);
+    });
+  }, [removeEntry, selectedEntry, requireAuth]);
+
+  const handleEdit = useCallback(() => {
+    if (!selectedEntry) return;
+    const editPayload = {
+      meal_name: selectedEntry.meal_name,
+      food_items: selectedEntry.food_items,
+      total_calories: selectedEntry.total_calories,
+      total_protein_g: selectedEntry.protein_g ?? 0,
+      total_carbs_g: selectedEntry.carbs_g ?? 0,
+      total_fat_g: selectedEntry.fat_g ?? 0,
+      image_url: selectedEntry.image_url ?? undefined,
+      existing_entry_id: selectedEntry.id,
+      source: selectedEntry.source ?? 'scan',
+    };
+    bottomSheetRef.current?.close();
+    router.push({ pathname: '/confirm', params: { data: JSON.stringify(editPayload) } });
+  }, [selectedEntry]);
+
+  const handleRescan = useCallback(() => {
+    if (!selectedEntry) return;
+    requireAuth(async () => {
+      Alert.alert('Rescan meal', 'Replace this meal with a new scan?', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Rescan',
+          onPress: async () => {
+            await removeEntry(selectedEntry.id);
+            setSelectedEntry(null);
+            bottomSheetRef.current?.close();
+            router.push('/(tabs)/camera');
+          },
+        },
+      ]);
+    });
+  }, [removeEntry, selectedEntry, requireAuth]);
 
   if (!profile) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
         <SkeletonCard lines={3} style={styles.skeletonCard} />
-        <SkeletonCard lines={2} style={styles.skeletonCard} />
+        <SkeletonCard lines={4} style={styles.skeletonCard} />
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.hydrationTint,
+          { backgroundColor: Colors.blue, opacity: hydrationProgress * 0.1 },
+        ]}
+      />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-
-        {/* Header */}
-        <Animated.View entering={FadeIn.delay(100).duration(500)} style={styles.header}>
-          <View style={styles.headerLeft}>
-            <View style={[styles.avatarCircle, { backgroundColor: theme.primary }]}>
-              <ThemedText variant="bodyMedium" color="white">
-                {userName.charAt(0).toUpperCase()}
-              </ThemedText>
-            </View>
-            <View style={styles.headerBrand}>
-              <Ionicons name="leaf" size={14} color={Colors.olive} />
-              <ThemedText variant="bodyMedium" color={Colors.olive} style={styles.brandText}>
-                NutriSnap
-              </ThemedText>
-            </View>
-          </View>
-          <Pressable>
-            <Ionicons name="notifications-outline" size={24} color={theme.textMuted} />
-          </Pressable>
-        </Animated.View>
-
-        {archetypeInfo && archetype && (
-          <Animated.View entering={FadeInDown.delay(150).springify()} style={styles.heroWrap}>
-            <View style={[styles.archetypeHero, { backgroundColor: archetypeInfo.colors.bg }]}>
-              <View style={styles.heroCopy}>
-                <ThemedText variant="label" color={archetypeInfo.colors.accent}>
-                  {archetypeInfo.name.toUpperCase()} JOURNEY
-                </ThemedText>
-                <ThemedText variant="h1" color="white" style={styles.heroTitle}>
-                  {ARCHETYPE_HEADLINES[archetype]}
-                </ThemedText>
-                <ThemedText variant="body" color="rgba(255,255,255,0.76)" style={styles.heroText}>
-                  {archetypeInfo.description}
-                </ThemedText>
-              </View>
-              <Image source={ARCHETYPE_ART[archetype]} style={styles.heroImage} resizeMode="contain" />
-            </View>
-          </Animated.View>
-        )}
-
-        {/* Greeting */}
-        <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.greetingSection}>
-          <ThemedText variant="h1" style={styles.greetingText}>
-            {getGreeting()}, {userName}
-          </ThemedText>
-          <View style={styles.greetingRow}>
-            <ThemedText variant="body" color={theme.textMuted} style={styles.greetingSubtitle}>
-              Your body is feeling {rechargePercent}% recharged today.
+        <Animated.View entering={FadeIn.duration(450)} style={styles.header}>
+          <View style={styles.headerCopy}>
+            <ThemedText variant="h1" style={styles.greeting}>
+              {getGreeting()}, {userName}
             </ThemedText>
-            {streak > 0 && (
-              <View style={styles.streakInline}>
-                <ThemedText variant="label" color={Colors.orange} style={styles.streakInlineText}>
-                  DAY {streak}{'\n'}STREAK
-                </ThemedText>
-              </View>
-            )}
+            <ThemedText variant="body" color={theme.textMuted}>
+              Your nutrition journey continues today.
+            </ThemedText>
           </View>
-        </Animated.View>
-
-        {archetype && (
-          <Animated.View entering={FadeInDown.delay(250).springify()}>
-            <View style={[styles.coachCard, { backgroundColor: theme.card }]}>
-              <View style={[styles.coachIcon, { backgroundColor: Colors.orangeLight + '45' }]}>
-                <Ionicons name="sparkles-outline" size={20} color={Colors.orange} />
-              </View>
-              <View style={styles.coachText}>
-                <ThemedText variant="label" color={theme.textMuted}>DAILY COACH</ThemedText>
-                <ThemedText variant="bodyMedium">{COACH_LINES[archetype]}</ThemedText>
-              </View>
-            </View>
-          </Animated.View>
-        )}
-
-        <Animated.View entering={FadeInDown.delay(275).springify()}>
-          <View style={[styles.insightCard, { backgroundColor: theme.card }]}>
-            <View style={[styles.insightIcon, { backgroundColor: Colors.oliveLight + '45' }]}>
-              <Ionicons name="bulb-outline" size={20} color={Colors.olive} />
-            </View>
-            <View style={styles.insightText}>
-              <ThemedText variant="bodyMedium">Daily Insight</ThemedText>
-              <ThemedText variant="label" color={theme.textMuted}>{insight}</ThemedText>
-            </View>
-          </View>
-        </Animated.View>
-
-        {/* Concentric Rings Card */}
-        <Animated.View entering={FadeInDown.delay(300).springify()}>
-          <View style={[styles.ringsCard, { backgroundColor: isDark ? theme.card : Colors.oliveLight + '30' }]}>
-            <View style={styles.ringsCenter}>
-              <ConcentricRing
-                size={180}
-                calorieProgress={calProgress}
-                proteinProgress={proteinProgress}
-                carbsProgress={carbsProgress}
-                fatProgress={fatProgress}
-                centerContent={
-                  <View style={styles.ringsCenterText}>
-                    <ThemedText
-                      variant="h1"
-                      style={styles.caloriesLeftNumber}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                    >
-                      {caloriesLeft.toLocaleString()}
-                    </ThemedText>
-                    <ThemedText variant="label" color={theme.textMuted} style={styles.kcalLabel}>
-                      KCAL LEFT
-                    </ThemedText>
-                  </View>
-                }
-              />
-            </View>
-
-            {/* Legend */}
-            <View style={styles.ringsLegend}>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: Colors.olive }]} />
-                <ThemedText variant="label" color={theme.textMuted}>Prot</ThemedText>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: Colors.orange }]} />
-                <ThemedText variant="label" color={theme.textMuted}>Carb</ThemedText>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: Colors.brownMid }]} />
-                <ThemedText variant="label" color={theme.textMuted}>Fat</ThemedText>
-              </View>
-            </View>
-
-            {/* Macro bars */}
-            <View style={styles.macroBarGrid}>
-              <View style={styles.macroBarItem}>
-                <ThemedText variant="label" color={theme.textMuted}>PROTEIN</ThemedText>
-                <View style={styles.macroBarValueRow}>
-                  <ThemedText variant="h3">{totalProtein}g</ThemedText>
-                  <ThemedText variant="label" color={theme.textMuted}> / {macroGoals.protein}g</ThemedText>
-                </View>
-                <View style={[styles.macroBarTrack, { backgroundColor: theme.border }]}>
-                  <View style={[styles.macroBarFill, { backgroundColor: Colors.olive, width: `${proteinProgress * 100}%` }]} />
-                </View>
-              </View>
-              <View style={styles.macroBarItem}>
-                <ThemedText variant="label" color={theme.textMuted}>CARBS</ThemedText>
-                <View style={styles.macroBarValueRow}>
-                  <ThemedText variant="h3">{totalCarbs}g</ThemedText>
-                  <ThemedText variant="label" color={theme.textMuted}> / {macroGoals.carbs}g</ThemedText>
-                </View>
-                <View style={[styles.macroBarTrack, { backgroundColor: theme.border }]}>
-                  <View style={[styles.macroBarFill, { backgroundColor: Colors.orange, width: `${carbsProgress * 100}%` }]} />
-                </View>
-              </View>
-              <View style={styles.macroBarItem}>
-                <ThemedText variant="label" color={theme.textMuted}>FATS</ThemedText>
-                <View style={styles.macroBarValueRow}>
-                  <ThemedText variant="h3">{totalFat}g</ThemedText>
-                  <ThemedText variant="label" color={theme.textMuted}> / {macroGoals.fat}g</ThemedText>
-                </View>
-                <View style={[styles.macroBarTrack, { backgroundColor: theme.border }]}>
-                  <View style={[styles.macroBarFill, { backgroundColor: Colors.brownMid, width: `${fatProgress * 100}%` }]} />
-                </View>
-              </View>
-              <View style={styles.macroBarItem}>
-                <ThemedText variant="label" color={theme.textMuted}>WATER</ThemedText>
-                <View style={styles.macroBarValueRow}>
-                  <ThemedText variant="h3">{waterLiters}L</ThemedText>
-                  <ThemedText variant="label" color={theme.textMuted}> / {waterGoalLiters}L</ThemedText>
-                </View>
-                <View style={[styles.macroBarTrack, { backgroundColor: theme.border }]}>
-                  <View style={[styles.macroBarFill, { backgroundColor: '#4FC3F7', width: `${Math.min(1, waterMl / 2500) * 100}%` }]} />
-                </View>
-              </View>
-            </View>
-          </View>
-        </Animated.View>
-
-        <Animated.View entering={FadeInDown.delay(350).springify()}>
-          <View style={[styles.scoreCard, { backgroundColor: theme.card }]}>
-            <View>
-              <ThemedText variant="label" color={theme.textMuted}>NUTRISCORE</ThemedText>
-              <ThemedText variant="h1" color={theme.primary}>{nutriScore} / 100</ThemedText>
-              <ThemedText variant="label" color={theme.textMuted}>{getScoreLabel(nutriScore)} momentum</ThemedText>
-            </View>
-            <View style={styles.scoreChecks}>
-              <ThemedText variant="label" color={proteinProgress >= 0.7 ? Colors.olive : Colors.orange}>
-                {proteinProgress >= 0.7 ? '✓' : '!'} Protein {proteinProgress >= 0.7 ? 'On Track' : 'Needs Focus'}
-              </ThemedText>
-              <ThemedText variant="label" color={hydrationProgress >= 0.6 ? Colors.olive : Colors.orange}>
-                {hydrationProgress >= 0.6 ? '✓' : '!'} Hydration {hydrationProgress >= 0.6 ? 'Good' : 'Building'}
-              </ThemedText>
-              <ThemedText variant="label" color={Colors.orange}>
-                ! Fiber Could Improve
-              </ThemedText>
-            </View>
-          </View>
-        </Animated.View>
-
-        {/* Streak Card */}
-        <Animated.View entering={FadeInDown.delay(400).springify()}>
-          <Pressable style={[styles.streakCard, { backgroundColor: Colors.oliveLight + '30' }]}>
-            <View style={styles.streakCardLeft}>
-              <Ionicons name="flame-outline" size={24} color={Colors.olive} />
-              <View>
-                <ThemedText variant="h3">{streak} Days</ThemedText>
-                <ThemedText variant="label" color={theme.textMuted}>Current Streak</ThemedText>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={theme.textMuted} />
+          <Pressable style={styles.avatarButton} onPress={() => router.push('/(tabs)/profile')}>
+            <ThemedText variant="bodySemiBold" color="white">
+              {getInitials(profile.name)}
+            </ThemedText>
           </Pressable>
         </Animated.View>
 
-        {/* Hydration */}
-        <Animated.View entering={FadeInDown.delay(450).springify()}>
-          <View style={[styles.hydrationCard, { backgroundColor: Colors.oliveLight + '20' }]}>
-            <View style={styles.hydrationHeader}>
-              <View>
-                <ThemedText variant="bodyMedium">Hydration Garden</ThemedText>
-                {archetype && (
-                  <ThemedText variant="label" color={theme.textMuted}>
-                    {HYDRATION_LINES[archetype]}
-                  </ThemedText>
-                )}
+        <Animated.View entering={FadeInDown.delay(80).springify()} style={styles.weekRow}>
+          {Array.from({ length: 7 }).map((_, index) => {
+            const active = index < Math.min(7, Math.max(streak, entries.length > 0 ? 1 : 0));
+            return (
+              <View key={index} style={[styles.flameDot, active && styles.flameDotActive]}>
+                <Ionicons
+                  name={active ? 'flame' : 'ellipse-outline'}
+                  size={18}
+                  color={active ? Colors.orange : Colors.border}
+                />
               </View>
-              <ThemedText variant="bodyMedium" color={Colors.olive}>
-                {waterLiters}L / {waterGoalLiters}L
-              </ThemedText>
-            </View>
-            <View style={styles.waterDrops}>
-              {Array.from({ length: WATER_CUPS }).map((_, i) => (
-                <Pressable key={i} onPress={i === waterCupsFilled ? handleAddWater : undefined}>
-                  <Ionicons
-                    name={i < waterCupsFilled ? 'water' : 'water-outline'}
-                    size={28}
-                    color={i < waterCupsFilled ? Colors.olive : theme.border}
-                  />
-                </Pressable>
-              ))}
-            </View>
-          </View>
+            );
+          })}
         </Animated.View>
 
-        {/* Today's meals */}
-        <Animated.View entering={FadeInDown.delay(500).springify()} style={styles.mealsSection}>
-          <View style={styles.mealsSectionHeader}>
-            <ThemedText variant="h3">Today's meals</ThemedText>
-            <Pressable onPress={() => {}}>
-              <ThemedText variant="bodyMedium" color={Colors.olive}>View Log</ThemedText>
+        <Animated.View entering={FadeInDown.delay(140).springify()} style={styles.heroGrid}>
+          <View style={[styles.ringsPanel, Shadows.card]}>
+            <CalorieRing
+              size={210}
+              progress={activeData.progress}
+              centerLabel={activeConfig.label}
+              centerValue={activeData.value}
+              ringColor={activeConfig.color}
+              strokeWidth={16}
+            />
+            <View style={styles.macroLegend}>
+              {rowMetrics.map((metric) => {
+                const config = METRIC_CONFIG[metric];
+                const data = metricData[metric];
+                return (
+                  <MacroRow
+                    key={metric}
+                    label={config.label}
+                    value={metric === 'calories' ? `${totalCalories} cal` : data.value}
+                    progress={data.progress}
+                    color={config.color}
+                    onPress={() => handleSwapMetric(metric)}
+                  />
+                );
+              })}
+            </View>
+          </View>
+
+          <HydrationJar
+            progress={hydrationProgress}
+            onPress={handleAddWater}
+            label={`${waterDisplay} / ${hydrationGoalDisplay}`}
+            sublabel="Tap to log water"
+          />
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.routeSection}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionHeaderCopy}>
+              <ThemedText variant="h2">Nutrition Route</ThemedText>
+              <ThemedText variant="label" color={theme.textMuted}>
+                Calories shape the wave. Protein-rich meals lift it.
+              </ThemedText>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Share nutrition route to your story"
+              style={styles.shareButton}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push({
+                  pathname: '/share-story' as any,
+                  params: {
+                    calories: String(totalCalories),
+                    streak: String(streak),
+                    protein: String(Math.round(totalProtein)),
+                    carbs: String(Math.round(totalCarbs)),
+                    fat: String(Math.round(totalFat)),
+                    chartData: JSON.stringify(entries.map((entry) => ({
+                      calories: entry.total_calories,
+                      timestamp: entry.occurred_at_local ?? entry.logged_at,
+                      thumbnailUrl: entry.image_url ?? undefined,
+                    }))),
+                  },
+                });
+              }}
+            >
+              <Ionicons name="share-outline" size={18} color={Colors.white} />
+              <ThemedText variant="bodySemiBold" color={Colors.white}>Share</ThemedText>
             </Pressable>
           </View>
-
-          {entries.length === 0 ? (
-            <View style={[styles.emptyMeals, { backgroundColor: theme.card }]}>
-              <View style={[styles.emptyPlate, { backgroundColor: Colors.orangeLight + '35' }]}>
-                <Ionicons name="restaurant-outline" size={42} color={Colors.orange} />
-              </View>
-              <ThemedText variant="body" color={theme.textMuted} align="center">
-                Ready for your first meal scan?
-              </ThemedText>
-              <Pressable
-                style={[styles.emptyScanButton, { backgroundColor: Colors.orange }]}
-                onPress={() => router.push('/(tabs)/camera')}
-              >
-                <Ionicons name="scan" size={18} color="white" />
-                <ThemedText variant="button" color="white">Fuel Your Journey</ThemedText>
-              </Pressable>
-            </View>
-          ) : (
-            <FlatList
-              horizontal
-              data={entries}
-              keyExtractor={(item) => item.id}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.mealsScroll}
-              renderItem={({ item }) => {
-                const mealType = item.meal_name?.split(' ')[0]?.toUpperCase() ?? 'MEAL';
-                return (
-                  <View style={[styles.mealCard, { backgroundColor: theme.card }]}>
-                    {/* Meal type badge */}
-                    <View style={[styles.mealBadge, { backgroundColor: Colors.olive }]}>
-                      <ThemedText variant="labelSmall" color="white">{mealType}</ThemedText>
-                    </View>
-                    <ThemedText variant="bodyMedium" numberOfLines={2} style={styles.mealName}>
-                      {item.meal_name}
-                    </ThemedText>
-                    <ThemedText variant="label" color={theme.textMuted}>
-                      {item.total_calories} kcal • {item.protein_g ?? 0}g protein
-                    </ThemedText>
-                  </View>
-                );
-              }}
-            />
-          )}
-        </Animated.View>
-
-        <Animated.View entering={FadeInDown.delay(600).springify()}>
-          <View style={[styles.factCard, { backgroundColor: theme.card }]}>
-            <View style={[styles.insightIcon, { backgroundColor: Colors.orangeLight + '40' }]}>
-              <Ionicons name="flash-outline" size={20} color={Colors.orange} />
-            </View>
-            <View style={styles.insightText}>
-              <ThemedText variant="bodyMedium">Fun Fuel Fact</ThemedText>
-              <ThemedText variant="label" color={theme.textMuted}>{fuelFact}</ThemedText>
+          <View style={styles.routeCard}>
+            <ChartModeSwitcher activeMode={chartMode} onModeChange={setChartMode} />
+            <View style={{ marginTop: 8 }}>
+              <NutritionRouteChart
+                data={routeData}
+                mode={chartMode}
+                orientation="horizontal"
+                calorieGoal={calorieGoal}
+                onNodePress={handleNodePress}
+              />
             </View>
           </View>
         </Animated.View>
 
-        {archetype && (
-          <Animated.View entering={FadeInDown.delay(650).springify()}>
-            <View style={[styles.communityCard, { backgroundColor: isDark ? Colors.darkCardMid : Colors.orangePale }]}>
-              <Ionicons name="people-outline" size={22} color={Colors.orange} />
-              <View style={styles.insightText}>
-                <ThemedText variant="bodyMedium">Community Pulse</ThemedText>
-                <ThemedText variant="label" color={theme.textMuted}>{COMMUNITY_LINES[archetype]}</ThemedText>
-              </View>
-            </View>
-          </Animated.View>
-        )}
+
+        <Animated.View entering={FadeInDown.delay(260).springify()} style={styles.insightCard}>
+          <View style={styles.insightIcon}>
+            <Ionicons name="bulb-outline" size={22} color={Colors.orange} />
+          </View>
+          <View style={styles.insightCopy}>
+            <ThemedText variant="bodySemiBold">Daily Insight</ThemedText>
+            <ThemedText variant="body" color={theme.textMuted}>
+              {insight}
+            </ThemedText>
+          </View>
+        </Animated.View>
 
         <View style={styles.bottomPadding} />
       </ScrollView>
 
-      {/* FAB for quick scan */}
-      <Pressable
-        style={[styles.fab, { backgroundColor: Colors.orange }, Shadows.fab]}
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          router.push('/(tabs)/camera');
-        }}
+      {selectedEntry && (
+      <BottomSheet
+        ref={bottomSheetRef}
+        index={-1}
+        snapPoints={['45%']}
+        enablePanDownToClose
+        onClose={() => setSelectedEntry(null)}
+        backgroundStyle={{ backgroundColor: Colors.white }}
+        handleIndicatorStyle={{ backgroundColor: Colors.border }}
       >
-        <Ionicons name="scan" size={28} color="white" />
-      </Pressable>
+        <BottomSheetView style={styles.sheetContent}>
+          {selectedEntry && (
+            <>
+              <ThemedText variant="h2">{selectedEntry.meal_name}</ThemedText>
+              <ThemedText variant="label" color={theme.textMuted}>
+                {new Date(selectedEntry.logged_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+              </ThemedText>
+              <View style={styles.sheetCalories}>
+                <ThemedText variant="h1" color={Colors.olive}>{selectedEntry.total_calories}</ThemedText>
+                <ThemedText variant="body" color={theme.textMuted}>calories</ThemedText>
+              </View>
+              <View style={styles.sheetMacroRow}>
+                <MacroChip label="Protein" value={`${Math.round(selectedEntry.protein_g ?? 0)}g`} color={Colors.olive} />
+                <MacroChip label="Carbs" value={`${Math.round(selectedEntry.carbs_g ?? 0)}g`} color={Colors.orange} />
+                <MacroChip label="Fat" value={`${Math.round(selectedEntry.fat_g ?? 0)}g`} color={Colors.brownMid} />
+              </View>
+              <View style={styles.sheetActions}>
+                <Pressable style={styles.editAction} onPress={handleEdit}>
+                  <Ionicons name="create-outline" size={18} color={Colors.olive} />
+                  <ThemedText variant="button" color={Colors.olive}>Edit</ThemedText>
+                </Pressable>
+                {selectedEntry?.source !== 'manual' && (
+                  <Pressable style={styles.rescanAction} onPress={handleRescan}>
+                    <Ionicons name="camera-outline" size={18} color={Colors.orange} />
+                    <ThemedText variant="button" color={Colors.orange}>Rescan</ThemedText>
+                  </Pressable>
+                )}
+                <Pressable style={styles.deleteAction} onPress={handleDelete}>
+                  <Ionicons name="trash-outline" size={18} color={Colors.error} />
+                  <ThemedText variant="button" color={Colors.error}>Delete</ThemedText>
+                </Pressable>
+              </View>
+            </>
+          )}
+        </BottomSheetView>
+      </BottomSheet>
+      )}
+
+      {/* Daily feedback modal */}
+      <FeedbackModal
+        visible={showFeedback}
+        onClose={() => setShowFeedback(false)}
+      />
     </SafeAreaView>
   );
 }
 
+/** Tappable macro row with progress bar â€” used below the ring */
+function MacroRow({
+  label,
+  value,
+  progress,
+  color,
+  onPress,
+}: {
+  label: string;
+  value: string;
+  progress: number;
+  color: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable style={styles.macroRow} onPress={onPress}>
+      <View style={[styles.macroDot, { backgroundColor: color }]} />
+      <View style={styles.macroRowText}>
+        <ThemedText variant="labelSmall" color={Colors.muted}>{label}</ThemedText>
+        <ThemedText variant="bodySemiBold">{value}</ThemedText>
+      </View>
+      <View style={styles.macroBarTrack}>
+        <View style={[styles.macroBarFill, { width: `${Math.min(100, progress * 100)}%`, backgroundColor: color }]} />
+      </View>
+    </Pressable>
+  );
+}
+
+function MacroChip({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <View style={styles.macroChip}>
+      <View style={[styles.chipDot, { backgroundColor: color }]} />
+      <View>
+        <ThemedText variant="labelSmall" color={Colors.muted}>{label}</ThemedText>
+        <ThemedText variant="bodySemiBold">{value}</ThemedText>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  heroWrap: {
-    paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.md,
-  },
-  archetypeHero: {
-    minHeight: 150,
-    borderRadius: BorderRadius.lg,
-    overflow: 'hidden',
-    padding: Spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  heroCopy: {
-    flex: 1,
-    zIndex: 1,
-  },
-  heroTitle: {
-    fontSize: 28,
-    lineHeight: 34,
-    marginTop: Spacing.xs,
-  },
-  heroText: {
-    marginTop: Spacing.xs,
-    maxWidth: 190,
-  },
-  heroImage: {
-    width: 132,
-    height: 132,
-    marginRight: -Spacing.sm,
+  container: { flex: 1 },
+  hydrationTint: {
+    ...StyleSheet.absoluteFillObject,
   },
   scrollContent: {
-    paddingBottom: Spacing['4xl'],
+    paddingBottom: Spacing['5xl'],
   },
   skeletonCard: {
     marginHorizontal: Spacing.xl,
     marginTop: Spacing.xl,
   },
-  // Header
   header: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.sm,
-    paddingBottom: Spacing.sm,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.base,
+    gap: Spacing.lg,
   },
-  headerLeft: {
-    flexDirection: 'row',
+  headerCopy: { flex: 1 },
+  greeting: {
+    fontSize: 30,
+    lineHeight: 36,
+  },
+  avatarButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
-    gap: Spacing.md,
-  },
-  avatarCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
     justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: Colors.olive,
   },
-  headerBrand: {
+  weekRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  brandText: {
-    fontWeight: '700',
-  },
-  // Greeting
-  greetingSection: {
     paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.md,
+    gap: Spacing.sm,
+    marginBottom: Spacing.base,
   },
-  greetingText: {
-    fontSize: 26,
-    lineHeight: 34,
-  },
-  greetingRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginTop: Spacing.xs,
-  },
-  greetingSubtitle: {
-    flex: 1,
-    lineHeight: 22,
-  },
-  streakInline: {
-    marginLeft: Spacing.md,
-  },
-  streakInlineText: {
-    textAlign: 'right',
-    fontWeight: '700',
-    lineHeight: 16,
-  },
-  coachCard: {
-    flexDirection: 'row',
+  flameDot: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
-    marginHorizontal: Spacing.xl,
-    padding: Spacing.base,
-    borderRadius: BorderRadius.md,
-    gap: Spacing.md,
-    marginBottom: Spacing.md,
-  },
-  coachIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
     justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
-  coachText: {
+  flameDotActive: {
+    backgroundColor: Colors.orangePale,
+    borderColor: Colors.orangeLight,
+  },
+  heroGrid: {
+    flexDirection: 'row',
+    paddingHorizontal: Spacing.xl,
+    gap: Spacing.md,
+    alignItems: 'stretch',
+  },
+  ringsPanel: {
     flex: 1,
-    gap: 2,
-  },
-  // Rings Card
-  ringsCard: {
-    marginHorizontal: Spacing.xl,
+    backgroundColor: Colors.white,
     borderRadius: BorderRadius.lg,
-    padding: Spacing.xl,
-    marginBottom: Spacing.md,
-  },
-  ringsCenter: {
+    padding: Spacing.base,
     alignItems: 'center',
-    marginBottom: Spacing.base,
   },
-  ringsCenterText: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    maxWidth: 70,
+  macroLegend: {
+    width: '100%',
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
   },
-  caloriesLeftNumber: {
-    fontSize: 24,
-  },
-  kcalLabel: {
-    fontSize: 9,
-    letterSpacing: 0.5,
-  },
-  ringsLegend: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: Spacing.xl,
-    marginBottom: Spacing.base,
-  },
-  legendItem: {
+  macroRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.xs,
+    gap: Spacing.sm,
+    paddingVertical: Spacing.xs,
   },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  macroDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
   },
-  // Macro bars
-  macroBarGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.md,
-  },
-  macroBarItem: {
-    width: '47%',
-    gap: 2,
-  },
-  macroBarValueRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
+  macroRowText: {
+    flex: 1,
   },
   macroBarTrack: {
-    height: 6,
+    width: 48,
+    height: 5,
     borderRadius: 3,
+    backgroundColor: Colors.border,
     overflow: 'hidden',
-    marginTop: 4,
   },
   macroBarFill: {
     height: '100%',
     borderRadius: 3,
   },
-  scoreCard: {
-    marginHorizontal: Spacing.xl,
-    padding: Spacing.base,
-    borderRadius: BorderRadius.md,
-    marginBottom: Spacing.md,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
-  scoreChecks: {
-    flex: 1,
-    justifyContent: 'center',
-    gap: Spacing.xs,
-    alignItems: 'flex-end',
-  },
-  // Streak
-  streakCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginHorizontal: Spacing.xl,
-    paddingVertical: Spacing.base,
-    paddingHorizontal: Spacing.base,
-    borderRadius: BorderRadius.md,
-    marginBottom: Spacing.md,
-  },
-  streakCardLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-  },
-  // Hydration
-  hydrationCard: {
-    marginHorizontal: Spacing.xl,
-    padding: Spacing.base,
-    borderRadius: BorderRadius.md,
-    marginBottom: Spacing.md,
-  },
-  hydrationHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.md,
-  },
-  waterDrops: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  // Meals
-  mealsSection: {
-    marginBottom: Spacing.md,
-  },
-  mealsSectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.md,
-  },
-  mealsScroll: {
-    paddingHorizontal: Spacing.xl,
-    gap: Spacing.md,
-  },
-  mealCard: {
-    width: SCREEN_WIDTH * 0.55,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.base,
-    gap: Spacing.xs,
-  },
-  mealBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-    borderRadius: 4,
-    marginBottom: Spacing.xs,
-  },
-  mealName: {
-    marginBottom: 2,
-  },
-  emptyMeals: {
-    marginHorizontal: Spacing.xl,
-    padding: Spacing['2xl'],
-    borderRadius: BorderRadius.md,
-    alignItems: 'center',
-    gap: Spacing.md,
-  },
-  emptyPlate: {
-    width: 82,
-    height: 82,
-    borderRadius: 41,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyScanButton: {
+  macroChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
+  },
+  chipDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+  },
+  routeSection: {
+    paddingHorizontal: Spacing.xl,
+    marginTop: Spacing.xl,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.base,
+    marginBottom: Spacing.md,
+  },
+  sectionHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  shareButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    minHeight: 44,
     paddingHorizontal: Spacing.base,
     paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.sm,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.orange,
+    ...Shadows.card,
+    shadowColor: Colors.orange,
+    shadowOpacity: 0.25,
+    elevation: 4,
+    flexShrink: 0,
   },
-  // Insight
+  routeCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.sm,
+  },
+
   insightCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
     marginHorizontal: Spacing.xl,
-    padding: Spacing.base,
-    borderRadius: BorderRadius.md,
+    marginTop: Spacing.xl,
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.white,
+    flexDirection: 'row',
     gap: Spacing.md,
-    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   insightIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.orangePale,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  insightText: {
+  insightCopy: { flex: 1, gap: 2 },
+  bottomPadding: { height: 120 },
+  sheetContent: { padding: Spacing.xl, gap: Spacing.base },
+  sheetCalories: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: Spacing.sm,
+  },
+  sheetMacroRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  sheetActions: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginTop: Spacing.md,
+  },
+  editAction: {
     flex: 1,
-    gap: 2,
-  },
-  factCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: Spacing.xl,
-    padding: Spacing.base,
+    height: 48,
     borderRadius: BorderRadius.md,
-    gap: Spacing.md,
-    marginBottom: Spacing.md,
-  },
-  communityCard: {
-    flexDirection: 'row',
+    backgroundColor: Colors.oliveLight,
     alignItems: 'center',
-    marginHorizontal: Spacing.xl,
-    padding: Spacing.base,
-    borderRadius: BorderRadius.md,
-    gap: Spacing.md,
-    marginBottom: Spacing.md,
-  },
-  // FAB
-  fab: {
-    position: 'absolute',
-    bottom: Spacing['4xl'],
-    right: Spacing.xl,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
     justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: 'row',
+    gap: Spacing.sm,
   },
-  bottomPadding: {
-    height: Spacing['5xl'],
+  deleteAction: {
+    flex: 1,
+    height: 48,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.errorLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  rescanAction: {
+    flex: 1,
+    height: 48,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.orangePale,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: Spacing.sm,
   },
 });
