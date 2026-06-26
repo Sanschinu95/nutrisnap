@@ -33,6 +33,17 @@ export default function TransitionScreen() {
       const unitPreference = (params.unitPreference as UnitPreference) === 'imperial'
         ? 'imperial'
         : 'metric';
+      const splitCsv = (raw: unknown): string[] => {
+        if (typeof raw !== 'string' || raw.length === 0) return [];
+        return raw.split(',').map((part) => part.trim()).filter(Boolean);
+      };
+      const dietary = {
+        allergies: splitCsv(params.allergies),
+        diets: splitCsv(params.dietPreferences),
+        custom: splitCsv(params.customPreferences),
+      };
+      const hasDietary =
+        dietary.allergies.length > 0 || dietary.diets.length > 0 || dietary.custom.length > 0;
       const result = await completeOnboarding({
         name: (params.name as string) || 'User',
         biological_sex: (params.biologicalSex as BiologicalSex) || 'male',
@@ -43,6 +54,7 @@ export default function TransitionScreen() {
         activity_level: parseInt(params.activityLevel as string, 10) || 3,
         archetype: (params.archetype as ArchetypeKey) || 'lion',
         unit_preference: unitPreference,
+        dietary_preferences: hasDietary ? dietary : undefined,
       });
       if (!result.success) console.warn('Onboarding save error:', result.error);
       router.replace('/future-you');

@@ -6,7 +6,8 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import { calculateNutritionGoals } from '@/lib/tdee';
-import type { Profile } from '@/types/database';
+import { calculateNutritionTargets, mapOnboardingActivityToTier, type WeightLogInput } from '@/lib/nutritionEngine';
+import type { DietaryPreferences, Profile } from '@/types/database';
 import type { ArchetypeKey, BiologicalSex, GoalType } from '@/types/archetype';
 import type { MacroGoals } from '@/types/nutrition';
 import type { ArchetypeLevel } from '@/constants/archetypeProgress';
@@ -26,7 +27,9 @@ interface OnboardingData {
   goal_weight_kg?: number;
   goal_type: GoalType;
   activity_level: number;
+  unit_preference?: 'metric' | 'imperial';
   archetype: ArchetypeKey;
+  dietary_preferences?: DietaryPreferences;
 }
 
 interface UserState {
@@ -34,6 +37,7 @@ interface UserState {
   archetype: ArchetypeKey | null;
   calorieGoal: number;
   macroGoals: MacroGoals;
+  hydrationGoalMl: number;
   streak: number;
   archetypeProgress: number;
   archetypeLevel: ArchetypeLevel;
@@ -56,6 +60,7 @@ type UserStore = UserState & UserActions;
 
 const DEFAULT_CALORIES = 2000;
 const DEFAULT_MACROS: MacroGoals = { protein: 150, carbs: 200, fat: 67 };
+const DEFAULT_HYDRATION_ML = 2500;
 
 function extractGoals(profile: Profile) {
   const progress = profile.archetype_progress ?? 0;
@@ -67,9 +72,50 @@ function extractGoals(profile: Profile) {
       carbs: profile.carb_goal ?? DEFAULT_MACROS.carbs,
       fat: profile.fat_goal ?? DEFAULT_MACROS.fat,
     },
+    hydrationGoalMl: profile.hydration_goal_ml ?? DEFAULT_HYDRATION_ML,
     streak: profile.streak_count ?? 0,
     archetypeProgress: progress,
     archetypeLevel: getLevelForProgress(progress).key,
+  };
+}
+
+async function loadRecentWeights(userId: string): Promise<WeightLogInput[]> {
+  const { data, error } = await supabase
+    .from('weight_logs')
+    .select('weight_kg, logged_at')
+    .eq('user_id', userId)
+    .order('logged_at', { ascending: false })
+    .limit(7);
+
+  if (error) return [];
+  return (data ?? []).map((log) => ({
+    weight_kg: Number(log.weight_kg),
+    logged_at: log.logged_at,
+  }));
+}
+
+async function buildRecomputedGoalUpdates(profile: Profile): Promise<Partial<Profile>> {
+  if (!profile.weight_kg || !profile.height_cm || !profile.age || !profile.biological_sex || !profile.goal_type) {
+    return {};
+  }
+
+  const targets = calculateNutritionTargets({
+    age: profile.age,
+    sex: profile.biological_sex,
+    height_cm: profile.height_cm,
+    current_weight_kg: profile.weight_kg,
+    goal_weight_kg: profile.goal_weight_kg,
+    goal_type: profile.goal_type,
+    activity_tier: profile.activity_tier ?? 'low',
+    weight_logs: await loadRecentWeights(profile.id),
+  });
+
+  return {
+    calorie_goal: targets.calorie_target,
+    protein_goal: targets.macros.protein_g,
+    carb_goal: targets.macros.carbs_g,
+    fat_goal: targets.macros.fat_g,
+    hydration_goal_ml: targets.hydration_target_ml,
   };
 }
 
@@ -78,6 +124,7 @@ export const useUserStore = create<UserStore>((set, get) => ({
   archetype: null,
   calorieGoal: DEFAULT_CALORIES,
   macroGoals: DEFAULT_MACROS,
+  hydrationGoalMl: DEFAULT_HYDRATION_ML,
   streak: 0,
   archetypeProgress: 0,
   archetypeLevel: 'pup' as ArchetypeLevel,
@@ -124,8 +171,21 @@ export const useUserStore = create<UserStore>((set, get) => ({
     if (!profile) return;
 
     try {
+      const shouldRecompute = [
+        'weight_kg',
+        'height_cm',
+        'age',
+        'biological_sex',
+        'goal_type',
+        'goal_weight_kg',
+        'activity_tier',
+      ].some((field) => field in updates);
+      const baseProfile = { ...profile, ...updates };
+      const recomputed = shouldRecompute ? await buildRecomputedGoalUpdates(baseProfile) : {};
+      const finalUpdates = { ...updates, ...recomputed };
+
       // Optimistic in-memory update
-      const updated = { ...profile, ...updates, updated_at: new Date().toISOString() };
+      const updated = { ...profile, ...finalUpdates, updated_at: new Date().toISOString() };
       set({
         profile: updated,
         ...extractGoals(updated),
@@ -134,7 +194,7 @@ export const useUserStore = create<UserStore>((set, get) => ({
       // Persist to Supabase
       const { error } = await supabase
         .from('profiles')
-        .update(updates)
+        .update(finalUpdates)
         .eq('id', profile.id);
 
       if (error) {
@@ -157,6 +217,7 @@ export const useUserStore = create<UserStore>((set, get) => ({
         data.goal_type,
         data.archetype,
         data.activity_level,
+        data.goal_weight_kg,
       );
 
       // Check if user is authenticated
@@ -186,14 +247,18 @@ export const useUserStore = create<UserStore>((set, get) => ({
         weight_kg: data.weight_kg,
         goal_weight_kg: data.goal_weight_kg ?? null,
         goal_type: data.goal_type,
+        unit_preference: data.unit_preference ?? 'metric',
+        activity_tier: mapOnboardingActivityToTier(data.activity_level),
         archetype: data.archetype,
         archetype_tier: 'base' as const,
         archetype_progress: 0,
         archetype_level: 'pup',
+        dietary_preferences: data.dietary_preferences ?? null,
         calorie_goal: goals.calorieGoal,
         protein_goal: goals.proteinGoal,
         carb_goal: goals.carbGoal,
         fat_goal: goals.fatGoal,
+        hydration_goal_ml: goals.hydrationGoalMl,
         streak_count: 0,
         longest_streak: 0,
         last_logged_date: null,
@@ -265,6 +330,15 @@ export const useUserStore = create<UserStore>((set, get) => ({
         .from('profiles')
         .update(updates)
         .eq('id', profile.id);
+
+      await supabase
+        .from('streaks')
+        .upsert({
+          user_id: profile.id,
+          current_streak_count: newStreak,
+          last_logged_date: today,
+          grace_days_used_this_week: 0,
+        }, { onConflict: 'user_id' });
     } catch (error) {
       console.warn('Streak update failed:', error);
     }
@@ -309,6 +383,7 @@ export const useUserStore = create<UserStore>((set, get) => ({
     archetype: null,
     calorieGoal: DEFAULT_CALORIES,
     macroGoals: DEFAULT_MACROS,
+    hydrationGoalMl: DEFAULT_HYDRATION_ML,
     streak: 0,
     archetypeProgress: 0,
     archetypeLevel: 'pup' as ArchetypeLevel,

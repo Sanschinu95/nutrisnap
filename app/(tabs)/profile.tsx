@@ -28,6 +28,8 @@ export default function ProfileScreen() {
   const [feedbackText, setFeedbackText] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     loadToday();
@@ -78,44 +80,26 @@ export default function ProfileScreen() {
   const handleDeleteAccount = useCallback(() => {
     requireAuth(async () => {
       if (!user) return;
-      Alert.alert(
-        'Delete Account',
-        'Are you sure? All your meals, progress, and profile data will be permanently removed.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete Everything',
-            style: 'destructive',
-            onPress: () => {
-              Alert.alert(
-                'This cannot be undone',
-                'Your account and all associated data will be permanently deleted.',
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Permanently Delete',
-                    style: 'destructive',
-                    onPress: async () => {
-                      setIsDeleting(true);
-                      try {
-                        await deleteAccountData(user.id);
-                        await signOut();
-                      } catch (error) {
-                        Alert.alert('Delete Failed', 'Unable to delete your account. Please try again.');
-                        console.error('Delete error:', error);
-                      } finally {
-                        setIsDeleting(false);
-                      }
-                    },
-                  },
-                ],
-              );
-            },
-          },
-        ],
-      );
+      setDeleteError(null);
+      setShowDeleteConfirm(true);
     });
-  }, [user, signOut, requireAuth]);
+  }, [user, requireAuth]);
+
+  const confirmDeleteAccount = useCallback(async () => {
+    if (!user) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteAccountData(user.id);
+      setShowDeleteConfirm(false);
+      await signOut();
+    } catch (error) {
+      console.error('Delete error:', error);
+      setDeleteError('Unable to delete your account. Please try again.');
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [user, signOut]);
 
   const handleFeedbackSubmit = () => {
     setFeedbackType(null);
@@ -272,6 +256,55 @@ export default function ProfileScreen() {
             <View style={styles.formActions}>
               <Button title="Cancel" variant="ghost" onPress={() => setFeedbackType(null)} style={styles.formButton} />
               <Button title="Submit" onPress={handleFeedbackSubmit} style={styles.formButton} />
+            </View>
+          </View>
+        </View>
+      )}
+
+      {showDeleteConfirm && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.deleteCard}>
+            <View style={styles.deleteIconWrap}>
+              <Ionicons name="trash-outline" size={28} color={Colors.error} />
+            </View>
+            <ThemedText variant="h2" align="center" style={styles.deleteTitle}>
+              Delete everything?
+            </ThemedText>
+            <ThemedText variant="body" color={Colors.muted} align="center" style={styles.deleteBody}>
+              This permanently removes your profile, meals, hydration logs, weight history, and streaks. This cannot be undone.
+            </ThemedText>
+            {deleteError && (
+              <View style={styles.deleteErrorBanner}>
+                <Ionicons name="alert-circle-outline" size={18} color={Colors.error} />
+                <ThemedText variant="label" color={Colors.error} style={styles.deleteErrorText}>
+                  {deleteError}
+                </ThemedText>
+              </View>
+            )}
+            <View style={styles.formActions}>
+              <Button
+                title="Cancel"
+                variant="ghost"
+                onPress={() => {
+                  if (isDeleting) return;
+                  setShowDeleteConfirm(false);
+                  setDeleteError(null);
+                }}
+                style={styles.formButton}
+              />
+              <Pressable
+                style={[styles.deleteConfirmButton, isDeleting && styles.deleteConfirmDisabled]}
+                onPress={confirmDeleteAccount}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <ActivityIndicator size="small" color={Colors.white} />
+                ) : (
+                  <ThemedText variant="button" color={Colors.white}>
+                    Delete everything
+                  </ThemedText>
+                )}
+              </Pressable>
             </View>
           </View>
         </View>
@@ -492,5 +525,51 @@ const styles = StyleSheet.create({
   },
   formButton: {
     flex: 1,
+  },
+  deleteCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.xl,
+    gap: Spacing.md,
+    alignItems: 'center',
+  },
+  deleteIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.errorLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteTitle: {
+    fontSize: 22,
+    lineHeight: 28,
+  },
+  deleteBody: {
+    maxWidth: 320,
+  },
+  deleteErrorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.errorLight,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    width: '100%',
+  },
+  deleteErrorText: {
+    flex: 1,
+  },
+  deleteConfirmButton: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteConfirmDisabled: {
+    opacity: 0.6,
   },
 });

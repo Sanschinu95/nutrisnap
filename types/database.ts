@@ -1,10 +1,25 @@
 /**
- * Neon database type definitions
+ * Database type definitions
  * These match the SQL schema in docs/schema.sql
  */
 
 import type { ArchetypeKey, ArchetypeTier, BiologicalSex, GoalType } from './archetype';
-import type { FoodItem, UserCorrection, NutritionEntry } from './nutrition';
+import type {
+  FeedbackType,
+  FoodItem,
+  HydrationSource,
+  MealSource,
+  PortionSizeTier,
+  UserCorrection,
+  NutritionEntry,
+} from './nutrition';
+import type { UnitPreference } from '@/lib/nutritionEngine';
+
+export interface DietaryPreferences {
+  allergies?: string[];
+  diets?: string[];
+  custom?: string[];
+}
 
 export interface Database {
   public: {
@@ -13,6 +28,46 @@ export interface Database {
         Row: Profile;
         Insert: ProfileInsert;
         Update: ProfileUpdate;
+      };
+      meals: {
+        Row: MealRow;
+        Insert: MealInsert;
+        Update: MealUpdate;
+      };
+      food_items: {
+        Row: FoodItemRow;
+        Insert: FoodItemInsert;
+        Update: FoodItemUpdate;
+      };
+      scan_feedback: {
+        Row: ScanFeedbackRow;
+        Insert: ScanFeedbackInsert;
+        Update: ScanFeedbackUpdate;
+      };
+      hydration_logs: {
+        Row: HydrationLogRow;
+        Insert: HydrationLogInsert;
+        Update: HydrationLogUpdate;
+      };
+      streaks: {
+        Row: StreakRow;
+        Insert: StreakInsert;
+        Update: StreakUpdate;
+      };
+      vacation_periods: {
+        Row: VacationPeriodRow;
+        Insert: VacationPeriodInsert;
+        Update: VacationPeriodUpdate;
+      };
+      consistency_scores: {
+        Row: ConsistencyScoreRow;
+        Insert: ConsistencyScoreInsert;
+        Update: ConsistencyScoreUpdate;
+      };
+      events: {
+        Row: EventRow;
+        Insert: EventInsert;
+        Update: EventUpdate;
       };
       food_entries: {
         Row: FoodEntryRow;
@@ -63,6 +118,9 @@ export interface Profile {
   goal_weight_kg: number | null;
   goal_type: GoalType | null;
   biological_sex: BiologicalSex | null;
+  unit_preference: UnitPreference;
+  activity_tier: 'low' | 'moderate' | 'high' | null;
+  hydration_goal_ml: number | null;
   calorie_goal: number | null;
   protein_goal: number | null;
   carb_goal: number | null;
@@ -71,16 +129,148 @@ export interface Profile {
   archetype_tier: ArchetypeTier;
   archetype_progress: number;
   archetype_level: string;
+  dietary_preferences: DietaryPreferences | null;
   streak_count: number;
   longest_streak: number;
   last_logged_date: string | null;
   onboarding_complete: boolean;
+  feedback_submitted: boolean;
   created_at: string;
   updated_at: string;
 }
 
 export type ProfileInsert = Partial<Profile> & { id: string };
 export type ProfileUpdate = Partial<Profile>;
+
+// Canonical Meals
+export interface MealRow {
+  id: string;
+  user_id: string;
+  occurred_at_local: string;
+  occurred_at_utc: string;
+  total_calories: number;
+  total_protein: number;
+  total_carbs: number;
+  total_fat: number;
+  source: MealSource;
+  image_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type MealInsert = Omit<MealRow, 'id' | 'created_at' | 'updated_at'> & {
+  id?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type MealUpdate = Partial<MealRow>;
+
+export interface FoodItemRow {
+  id: string;
+  meal_id: string;
+  name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  portion_size_tier: PortionSizeTier | null;
+  grams: number | null;
+  created_at: string;
+}
+
+export type FoodItemInsert = Omit<FoodItemRow, 'id' | 'created_at'> & {
+  id?: string;
+  created_at?: string;
+};
+
+export type FoodItemUpdate = Partial<FoodItemRow>;
+
+export interface ScanFeedbackRow {
+  id: string;
+  meal_id: string;
+  food_item_id: string | null;
+  raw_model_prediction: Record<string, unknown>;
+  user_corrected_values: Record<string, unknown> | null;
+  feedback_type: FeedbackType;
+  created_at: string;
+}
+
+export type ScanFeedbackInsert = Omit<ScanFeedbackRow, 'id' | 'created_at'> & {
+  id?: string;
+  created_at?: string;
+};
+
+export type ScanFeedbackUpdate = Partial<ScanFeedbackRow>;
+
+export interface HydrationLogRow {
+  id: string;
+  user_id: string;
+  amount_ml: number;
+  source: HydrationSource;
+  occurred_at_local: string;
+  occurred_at_utc: string;
+}
+
+export type HydrationLogInsert = Omit<HydrationLogRow, 'id'> & { id?: string };
+export type HydrationLogUpdate = Partial<HydrationLogRow>;
+
+export interface StreakRow {
+  user_id: string;
+  current_streak_count: number;
+  last_logged_date: string | null;
+  grace_days_used_this_week: number;
+  updated_at: string;
+}
+
+export type StreakInsert = Omit<StreakRow, 'updated_at'> & { updated_at?: string };
+export type StreakUpdate = Partial<StreakRow>;
+
+export interface VacationPeriodRow {
+  id: string;
+  user_id: string;
+  start_date: string;
+  end_date: string;
+  created_at: string;
+}
+
+export type VacationPeriodInsert = Omit<VacationPeriodRow, 'id' | 'created_at'> & {
+  id?: string;
+  created_at?: string;
+};
+export type VacationPeriodUpdate = Partial<VacationPeriodRow>;
+
+export interface ConsistencyScoreRow {
+  id: string;
+  user_id: string;
+  period_start: string;
+  period_end: string;
+  score: number;
+  meals_logged_rate: number;
+  hydration_logged_rate: number;
+  days_active_rate: number;
+  created_at: string;
+}
+
+export type ConsistencyScoreInsert = Omit<ConsistencyScoreRow, 'id' | 'created_at'> & {
+  id?: string;
+  created_at?: string;
+};
+export type ConsistencyScoreUpdate = Partial<ConsistencyScoreRow>;
+
+export interface EventRow {
+  id: string;
+  event_name: string;
+  user_id: string | null;
+  occurred_at_local: string;
+  occurred_at_utc: string;
+  properties: Record<string, unknown>;
+  app_version: string | null;
+  platform: string | null;
+}
+
+export type EventInsert = Omit<EventRow, 'id'> & { id?: string };
+export type EventUpdate = Partial<EventRow>;
 
 // Food Entries
 export interface FoodEntryRow {
@@ -104,6 +294,7 @@ export interface FoodEntryRow {
 export type FoodEntryInsert = Omit<FoodEntryRow, 'id' | 'logged_at'> & {
   id?: string;
   logged_at?: string;
+  source?: MealSource;
 };
 
 export type FoodEntryUpdate = Partial<FoodEntryRow>;
