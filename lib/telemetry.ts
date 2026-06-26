@@ -16,7 +16,17 @@ export type AnalyticsEventName =
   | 'streak_grace_used'
   | 'vacation_mode_toggled'
   | 'progress_tab_viewed'
-  | 'settings_viewed';
+  | 'settings_viewed'
+  | 'coach_opened'
+  | 'coach_insight_tapped'
+  | 'coach_suggestion_tapped'
+  | 'coach_custom_prompt'
+  | 'coach_action_pinned'
+  | 'coach_pinned_opened'
+  | 'coach_pinned_dismissed'
+  | 'coach_limit_reached'
+  | 'coach_premium_viewed'
+  | 'coach_premium_tapped';
 
 interface QueuedEvent {
   event_name: AnalyticsEventName;
