@@ -142,7 +142,7 @@ export default function HomeScreen() {
 
   const handleAddWater = useCallback(() => {
     requireAuth(async () => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       addWater(quickAddMl);
       playWaterSound();
     });
@@ -280,7 +280,9 @@ export default function HomeScreen() {
           </View>
 
           <HydrationJar
-            progress={hydrationProgress}
+            totalMl={waterMl}
+            targetMl={hydrationGoalMl}
+            quickAddMl={quickAddMl}
             onPress={handleAddWater}
             label={`${waterDisplay} / ${hydrationGoalDisplay}`}
             sublabel="Tap to log water"
