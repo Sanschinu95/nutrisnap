@@ -25,6 +25,7 @@ import {
   Fraunces_600SemiBold,
   Fraunces_700Bold,
 } from '@expo-google-fonts/fraunces';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuthStore } from '@/stores/auth.store';
 import { useUserStore } from '@/stores/user.store';
@@ -91,6 +92,11 @@ export default function RootLayout() {
   const loadProfile = useUserStore((s) => s.loadProfile);
 
   const [fontsLoaded, fontError] = useFonts({
+    // Preload @expo/vector-icons font glyph atlases via the same useFonts
+    // hook. Without this, the lazy ExpoAsset.downloadAsync path hits a
+    // malformed `?unstable_path=...` URL on Android dev builds and 50+ icons
+    // fail to render — every Ionicon shows as a tofu box.
+    ...Ionicons.font,
     Nunito_700Bold,
     Nunito_800ExtraBold,
     Inter_400Regular,
