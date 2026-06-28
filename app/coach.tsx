@@ -237,7 +237,7 @@ export default function CoachScreen() {
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         {view === 'landing' ? (
@@ -659,7 +659,7 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   greeting: {
-    fontFamily: Typography.fonts.serifBold,
+    fontFamily: Typography.fonts.headingBold,
     fontSize: 22,
     lineHeight: 30,
     color: TEXT_PRIMARY,
@@ -858,7 +858,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalTitle: {
-    fontFamily: Typography.fonts.serifBold,
+    fontFamily: Typography.fonts.headingBold,
     fontSize: 20,
     color: TEXT_PRIMARY,
     textAlign: 'center',

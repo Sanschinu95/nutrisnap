@@ -38,28 +38,42 @@ export function AuthGateModal() {
       setError(null);
 
       const redirectUri = AuthSession.makeRedirectUri();
+      console.log('[Auth] redirectUri:', redirectUri);
 
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo: redirectUri },
       });
 
-      if (oauthError) throw oauthError;
+      if (oauthError) {
+        console.error('[Auth] signInWithOAuth error:', oauthError);
+        throw oauthError;
+      }
+      console.log('[Auth] OAuth URL received:', data?.url ? 'yes' : 'no');
 
       if (data.url) {
         const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUri);
+        console.log('[Auth] WebBrowser result.type:', result.type);
 
         if (result.type === 'success') {
           const { params, errorCode } = QueryParams.getQueryParams(result.url);
-          if (errorCode) throw new Error(errorCode);
+          if (errorCode) {
+            console.error('[Auth] errorCode from callback:', errorCode);
+            throw new Error(errorCode);
+          }
 
           const { access_token, refresh_token } = params;
+          console.log('[Auth] tokens present:', !!access_token, !!refresh_token);
           if (access_token && refresh_token) {
             const { error: sessionError } = await supabase.auth.setSession({
               access_token,
               refresh_token,
             });
-            if (sessionError) throw sessionError;
+            if (sessionError) {
+              console.error('[Auth] setSession error:', sessionError);
+              throw sessionError;
+            }
+            console.log('[Auth] session set OK');
 
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
@@ -75,11 +89,22 @@ export function AuthGateModal() {
             setTimeout(() => {
               executePendingAction();
             }, 100);
+          } else {
+            // Success type but no tokens — supabase callback didn't include them
+            setError('Sign in completed but no session token was returned. Check your Supabase Redirect URL config.');
           }
+        } else if (result.type === 'cancel' || result.type === 'dismiss') {
+          // User closed the browser. Don't show an error, just exit the loading state.
+          console.log('[Auth] user cancelled');
+        } else {
+          // Locked or other — show a friendly error
+          setError('Sign in did not complete. Please try again.');
         }
+      } else {
+        setError('Could not start sign in. Please try again.');
       }
     } catch (err) {
-      console.error('Auth gate sign-in error:', err);
+      console.error('[Auth] gate sign-in error:', err);
       setError(err instanceof Error ? err.message : 'Sign in failed. Please try again.');
     } finally {
       setIsSigningIn(false);

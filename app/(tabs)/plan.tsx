@@ -74,8 +74,10 @@ const CARD_SHADOW = {
   elevation: 2,
 } as const;
 
-const SERIF = Typography.fonts.serif;
-const SERIF_BOLD = Typography.fonts.serifBold;
+// Serif aliases swapped to sans per user preference — keep variable names so
+// the rest of the file doesn't need a rename pass.
+const SERIF = Typography.fonts.bodyMedium;
+const SERIF_BOLD = Typography.fonts.headingBold;
 const SANS = Typography.fonts.body;
 const SANS_MED = Typography.fonts.bodyMedium;
 const SANS_SEMI = Typography.fonts.bodySemiBold;

@@ -77,7 +77,11 @@ export async function uploadFoodImage(
   } as any);
   formData.append('upload_preset', UPLOAD_PRESET!);
   formData.append('folder', `nutrisnap/food-scans/${userId}`);
-  formData.append('transformation', 'q_auto,f_auto,w_800');
+  // NOTE: 'transformation' parameter is rejected by Cloudinary on UNSIGNED
+  // uploads (HTTP 400). Configure incoming transformations on the
+  // 'nutrisnap_mobile' upload preset in the Cloudinary dashboard instead
+  // (Settings → Upload → Upload presets → edit → Media analysis and AI →
+  // Incoming transformation). Suggested: q_auto,f_auto,w_800.
 
   return uploadWithRetry(formData);
 }
@@ -101,7 +105,9 @@ export async function uploadProfileImage(
   } as any);
   formData.append('upload_preset', UPLOAD_PRESET!);
   formData.append('folder', `nutrisnap/profiles/${userId}`);
-  formData.append('transformation', 'q_auto,f_auto,w_400,h_400,c_fill,g_face');
+  // Same Cloudinary unsigned-upload limitation as uploadFoodImage above —
+  // configure profile-image transformations (e.g. w_400,h_400,c_fill,g_face)
+  // on the upload preset in the Cloudinary dashboard, not in this request.
 
   return uploadWithRetry(formData);
 }
