@@ -17,6 +17,12 @@ export interface NutritionEngineInput {
   goal_type: GoalType;
   activity_tier: ActivityTier;
   weight_logs?: WeightLogInput[];
+  /**
+   * User-chosen rate of weight change in kg/week (0.25–1.0). When provided,
+   * drives the deficit/surplus calculation; falls back to the weight-gap
+   * heuristic otherwise. Ignored when goal_type is 'maintain'.
+   */
+  pace_kg_per_week?: number | null;
 }
 
 export interface MacroTargets {
@@ -96,22 +102,50 @@ export function inferWeeklyPaceKg(weightGapKg: number): number {
   return 0.75;
 }
 
+/** Energy density of one kg of body tissue, in kcal. Standard 7700 figure. */
+const KCAL_PER_KG = 7700;
+
+/** Hard caps so an aggressive pace can't push the calorie target into unsafe territory. */
+const MAX_DEFICIT_FRAC_OF_TDEE = 0.2;
+const MIN_SURPLUS_FRAC_OF_TDEE = 0.1;
+const MAX_SURPLUS_FRAC_OF_TDEE = 0.15;
+
+/** Allowable pace range, kg/week. Anything outside this gets clamped. */
+const MIN_PACE_KG_PER_WEEK = 0.1;
+const MAX_PACE_KG_PER_WEEK = 1.0;
+
 export function calculateGoalCalorieTarget(
   bmr: number,
   tdee: number,
   currentWeightKg: number,
   goalWeightKg: number | null | undefined,
   goalType: GoalType,
+  paceKgPerWeek?: number | null,
 ): number {
   let target = tdee;
   const weightGapKg = goalWeightKg ? goalWeightKg - currentWeightKg : 0;
 
+  // Resolve the effective pace: explicit user choice wins, otherwise infer
+  // from the size of the weight gap. Always clamped to a safe range.
+  const inferredPace = inferWeeklyPaceKg(weightGapKg);
+  const requestedPace =
+    typeof paceKgPerWeek === 'number' && Number.isFinite(paceKgPerWeek) && paceKgPerWeek > 0
+      ? paceKgPerWeek
+      : inferredPace;
+  const pace = clamp(requestedPace, MIN_PACE_KG_PER_WEEK, MAX_PACE_KG_PER_WEEK);
+
   if (goalType === 'cut' || weightGapKg < -0.25) {
-    const deficit = Math.min((inferWeeklyPaceKg(weightGapKg) * 7700) / 7, 0.2 * tdee);
+    const paceDailyDeficit = (pace * KCAL_PER_KG) / 7;
+    const deficit = Math.min(paceDailyDeficit, MAX_DEFICIT_FRAC_OF_TDEE * tdee);
     target = tdee - deficit;
   } else if (goalType === 'bulk' || weightGapKg > 0.25) {
-    const gapBasedSurplus = inferWeeklyPaceKg(weightGapKg) <= 0.25 ? 0.1 * tdee : 0.15 * tdee;
-    target = tdee + clamp(gapBasedSurplus, 0.1 * tdee, 0.15 * tdee);
+    const paceDailySurplus = (pace * KCAL_PER_KG) / 7;
+    const surplus = clamp(
+      paceDailySurplus,
+      MIN_SURPLUS_FRAC_OF_TDEE * tdee,
+      MAX_SURPLUS_FRAC_OF_TDEE * tdee,
+    );
+    target = tdee + surplus;
   }
 
   return Math.round(Math.max(target, bmr, 1200));
@@ -147,6 +181,7 @@ export function calculateNutritionTargets(input: NutritionEngineInput): Nutritio
     smoothedWeightKg,
     input.goal_weight_kg,
     input.goal_type,
+    input.pace_kg_per_week,
   );
 
   return {

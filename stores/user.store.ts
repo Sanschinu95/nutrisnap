@@ -110,6 +110,7 @@ async function buildRecomputedGoalUpdates(profile: Profile): Promise<Partial<Pro
     goal_type: profile.goal_type,
     activity_tier: profile.activity_tier ?? 'low',
     weight_logs: await loadRecentWeights(profile.id),
+    pace_kg_per_week: profile.pace_kg_per_week,
   });
 
   return {
@@ -181,6 +182,7 @@ export const useUserStore = create<UserStore>((set, get) => ({
         'goal_type',
         'goal_weight_kg',
         'activity_tier',
+        'pace_kg_per_week',
       ].some((field) => field in updates);
       const baseProfile = { ...profile, ...updates };
       const recomputed = shouldRecompute ? await buildRecomputedGoalUpdates(baseProfile) : {};
@@ -220,6 +222,8 @@ export const useUserStore = create<UserStore>((set, get) => ({
         data.archetype,
         data.activity_level,
         data.goal_weight_kg,
+        [],
+        data.pace_kg_per_week,
       );
 
       // Check if user is authenticated

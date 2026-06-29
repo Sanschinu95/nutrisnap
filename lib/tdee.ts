@@ -39,8 +39,9 @@ export function calculateCalorieGoal(
   bmr = 1200,
   currentWeightKg = 0,
   goalWeightKg?: number | null,
+  paceKgPerWeek?: number | null,
 ): number {
-  return calculateGoalCalorieTarget(bmr, tdee, currentWeightKg, goalWeightKg, goal);
+  return calculateGoalCalorieTarget(bmr, tdee, currentWeightKg, goalWeightKg, goal, paceKgPerWeek);
 }
 
 export function calculateNutritionGoals(
@@ -53,6 +54,7 @@ export function calculateNutritionGoals(
   activityLevel: number = 1,
   goalWeightKg?: number | null,
   weightLogs: WeightLogInput[] = [],
+  paceKgPerWeek?: number | null,
 ): {
   calorieGoal: number;
   proteinGoal: number;
@@ -71,6 +73,7 @@ export function calculateNutritionGoals(
     goal_type: goal,
     goal_weight_kg: goalWeightKg,
     activity_tier: mapOnboardingActivityToTier(activityLevel),
+    pace_kg_per_week: paceKgPerWeek,
   });
 
   return {
