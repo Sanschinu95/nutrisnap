@@ -130,6 +130,10 @@ export interface Profile {
   archetype_progress: number;
   archetype_level: string;
   dietary_preferences: DietaryPreferences | null;
+  /** Target rate of weight change in kg/week. Null when goal is 'maintain'. */
+  pace_kg_per_week: number | null;
+  /** Free-form list of self-reported medical conditions. Personalization only. */
+  medical_conditions: string[] | null;
   streak_count: number;
   longest_streak: number;
   last_logged_date: string | null;

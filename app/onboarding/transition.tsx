@@ -37,24 +37,24 @@ export default function TransitionScreen() {
         if (typeof raw !== 'string' || raw.length === 0) return [];
         return raw.split(',').map((part) => part.trim()).filter(Boolean);
       };
-      const dietary = {
-        allergies: splitCsv(params.allergies),
-        diets: splitCsv(params.dietPreferences),
-        custom: splitCsv(params.customPreferences),
-      };
-      const hasDietary =
-        dietary.allergies.length > 0 || dietary.diets.length > 0 || dietary.custom.length > 0;
+      const goalWeightRaw = parseFloat(params.goalWeight as string);
+      const goalWeightKg = Number.isFinite(goalWeightRaw) ? goalWeightRaw : undefined;
+      const paceRaw = parseFloat(params.paceKgPerWeek as string);
+      const paceKgPerWeek = Number.isFinite(paceRaw) ? paceRaw : null;
+      const medicalConditions = splitCsv(params.medicalConditions);
       const result = await completeOnboarding({
         name: (params.name as string) || 'User',
         biological_sex: (params.biologicalSex as BiologicalSex) || 'male',
         age: parseInt(params.age as string, 10) || 25,
         weight_kg: parseFloat(params.weight as string) || 70,
         height_cm: parseFloat(params.height as string) || 170,
+        goal_weight_kg: goalWeightKg,
         goal_type: (params.goal as GoalType) || 'maintain',
         activity_level: parseInt(params.activityLevel as string, 10) || 3,
         archetype: (params.archetype as ArchetypeKey) || 'lion',
         unit_preference: unitPreference,
-        dietary_preferences: hasDietary ? dietary : undefined,
+        pace_kg_per_week: paceKgPerWeek,
+        medical_conditions: medicalConditions,
       });
       if (!result.success) console.warn('Onboarding save error:', result.error);
       router.replace('/future-you');

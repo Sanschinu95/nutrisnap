@@ -30,6 +30,8 @@ interface OnboardingData {
   unit_preference?: 'metric' | 'imperial';
   archetype: ArchetypeKey;
   dietary_preferences?: DietaryPreferences;
+  pace_kg_per_week?: number | null;
+  medical_conditions?: string[];
 }
 
 interface UserState {
@@ -254,6 +256,8 @@ export const useUserStore = create<UserStore>((set, get) => ({
         archetype_progress: 0,
         archetype_level: 'pup',
         dietary_preferences: data.dietary_preferences ?? null,
+        pace_kg_per_week: data.pace_kg_per_week ?? null,
+        medical_conditions: data.medical_conditions ?? [],
         calorie_goal: goals.calorieGoal,
         protein_goal: goals.proteinGoal,
         carb_goal: goals.carbGoal,
