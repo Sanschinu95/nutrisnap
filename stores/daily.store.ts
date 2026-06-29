@@ -39,6 +39,7 @@ interface DailyActions {
   toggleCheatDay: () => Promise<void>;
   addWater: (ml: number) => Promise<void>;
   clearError: () => void;
+  reset: () => void;
 }
 
 type DailyStore = DailyState & DailyActions;
@@ -465,4 +466,14 @@ export const useDailyStore = create<DailyStore>((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  reset: () => set({
+    entries: [],
+    summary: null,
+    isCheatDay: false,
+    waterMl: 0,
+    isLoading: false,
+    error: null,
+    progressNotified: {},
+  }),
 }));

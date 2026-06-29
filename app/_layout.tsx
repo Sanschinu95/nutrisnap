@@ -110,10 +110,11 @@ export default function RootLayout() {
   useEffect(() => {
     async function prepare() {
       await initialize();
-      // Rehydrate the coach store (pinned insight + daily question budget)
-      await useCoachStore.getState().loadPersistedState();
-      // Try loading profile for current session
+      // Rehydrate the coach store (pinned insights + daily question budget)
       const { session } = useAuthStore.getState();
+      const currentUserId = session?.user?.id ?? null;
+      await useCoachStore.getState().loadPersistedState(currentUserId);
+      // Try loading profile for current session
       if (session?.user) {
         await loadProfile();
       }

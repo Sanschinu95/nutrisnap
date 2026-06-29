@@ -1,31 +1,45 @@
 /**
- * Pinned coach insight card rendered on Home. Only mounts when the user has
- * pinned a coach ACTION; otherwise renders nothing.
+ * Pinned coach insights on Home — up to 3 stacked cards, most recent on top.
+ * Renders nothing when the user has no pins.
  */
 
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { ThemedText } from '@/components/ui/ThemedText';
-import { useCoachStore } from '@/stores/coach.store';
+import { useCoachStore, type PinnedInsightState } from '@/stores/coach.store';
 import { trackEvent } from '@/lib/telemetry';
 
 const COACH_BLUE = '#3D8BFF';
 
 export function PinnedInsight() {
-  const pinnedInsight = useCoachStore((s) => s.pinnedInsight);
+  const pinnedInsights = useCoachStore((s) => s.pinnedInsights);
   const unpinInsight = useCoachStore((s) => s.unpinInsight);
 
-  if (!pinnedInsight) return null;
+  if (pinnedInsights.length === 0) return null;
 
+  const sorted = [...pinnedInsights].sort((a, b) => b.pinnedAt - a.pinnedAt);
+
+  return (
+    <View style={styles.stack}>
+      {sorted.map((pin) => (
+        <PinnedCard
+          key={pin.fromMessageId}
+          pin={pin}
+          onDismiss={() => {
+            trackEvent('coach_pinned_dismissed');
+            unpinInsight(pin.fromMessageId);
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
+function PinnedCard({ pin, onDismiss }: { pin: PinnedInsightState; onDismiss: () => void }) {
   const handleOpen = () => {
     trackEvent('coach_pinned_opened');
     router.push('/coach' as any);
-  };
-
-  const handleDismiss = () => {
-    trackEvent('coach_pinned_dismissed');
-    unpinInsight();
   };
 
   return (
@@ -38,7 +52,7 @@ export function PinnedInsight() {
         📌 Coach insight
       </ThemedText>
       <ThemedText variant="body" color="#2F241E" style={styles.body}>
-        {pinnedInsight.text}
+        {pin.text}
       </ThemedText>
       <View style={styles.actions}>
         <Pressable onPress={handleOpen} hitSlop={8}>
@@ -46,7 +60,7 @@ export function PinnedInsight() {
             Open
           </ThemedText>
         </Pressable>
-        <Pressable onPress={handleDismiss} hitSlop={8}>
+        <Pressable onPress={onDismiss} hitSlop={8}>
           <ThemedText variant="labelSmall" color="#8a7e74" style={styles.actionText}>
             Dismiss
           </ThemedText>
@@ -57,6 +71,9 @@ export function PinnedInsight() {
 }
 
 const styles = StyleSheet.create({
+  stack: {
+    gap: 8,
+  },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,

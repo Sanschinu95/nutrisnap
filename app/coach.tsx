@@ -24,8 +24,9 @@ import * as Haptics from 'expo-haptics';
 import Animated, { FadeIn, FadeInDown, FadeOut } from 'react-native-reanimated';
 import { ThemedText } from '@/components/ui/ThemedText';
 import { TypingIndicator } from '@/components/ui/TypingIndicator';
-import { useCoachStore, type ChatMessage } from '@/stores/coach.store';
+import { useCoachStore, type ChatMessage, type PinnedInsightState } from '@/stores/coach.store';
 import { useUserStore } from '@/stores/user.store';
+import { useAuthStore } from '@/stores/auth.store';
 import { buildCoachContext, type DataInsight } from '@/lib/coachContext';
 import { sendCoachMessage, type CoachMessage } from '@/lib/coachApi';
 import { trackEvent } from '@/lib/telemetry';
@@ -63,10 +64,12 @@ function newId(): string {
 
 export default function CoachScreen() {
   const profile = useUserStore((s) => s.profile);
+  const userId = useAuthStore((s) => s.user?.id ?? null);
   const {
     messages,
     isLoading,
-    pinnedInsight,
+    pinnedInsights,
+    savedConversation,
     addMessage,
     setLoading,
     canAskQuestion,
@@ -74,6 +77,8 @@ export default function CoachScreen() {
     getRemainingQuestions,
     pinInsight,
     loadPersistedState,
+    resumeSavedConversation,
+    dismissSavedConversation,
   } = useCoachStore();
 
   const [view, setView] = useState<ScreenState>('landing');
@@ -82,10 +87,6 @@ export default function CoachScreen() {
   const [inputText, setInputText] = useState('');
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [showLimit, setShowLimit] = useState(false);
-  const [replaceConfirm, setReplaceConfirm] = useState<{
-    text: string;
-    messageId: string;
-  } | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -99,7 +100,7 @@ export default function CoachScreen() {
 
   useEffect(() => {
     trackEvent('coach_opened');
-    loadPersistedState();
+    loadPersistedState(userId);
     (async () => {
       try {
         const ctx = await buildCoachContext();
@@ -112,7 +113,7 @@ export default function CoachScreen() {
     return () => {
       if (errorTimer.current) clearTimeout(errorTimer.current);
     };
-  }, [loadPersistedState]);
+  }, [loadPersistedState, userId]);
 
   useEffect(() => {
     if (view === 'chat') {
@@ -214,24 +215,27 @@ export default function CoachScreen() {
 
   const handlePin = useCallback(
     (text: string, messageId: string) => {
-      if (pinnedInsight && pinnedInsight.fromMessageId !== messageId) {
-        setReplaceConfirm({ text, messageId });
-        return;
-      }
+      const isPinned = pinnedInsights.some((p) => p.fromMessageId === messageId);
+      if (isPinned) return;
+      if (pinnedInsights.length >= 3) return;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      pinInsight(text, messageId);
-      trackEvent('coach_action_pinned');
+      const ok = pinInsight(text, messageId);
+      if (ok) trackEvent('coach_action_pinned');
     },
-    [pinnedInsight, pinInsight],
+    [pinnedInsights, pinInsight],
   );
 
-  const confirmReplace = useCallback(() => {
-    if (!replaceConfirm) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    pinInsight(replaceConfirm.text, replaceConfirm.messageId);
-    trackEvent('coach_action_pinned', { replaced: true });
-    setReplaceConfirm(null);
-  }, [pinInsight, replaceConfirm]);
+  const handleResume = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    trackEvent('coach_conversation_resumed');
+    resumeSavedConversation();
+    setView('chat');
+  }, [resumeSavedConversation]);
+
+  const handleDismissSaved = useCallback(() => {
+    trackEvent('coach_conversation_dismissed');
+    dismissSavedConversation();
+  }, [dismissSavedConversation]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -248,10 +252,13 @@ export default function CoachScreen() {
             inputText={inputText}
             setInputText={setInputText}
             remaining={remaining}
+            savedConversation={savedConversation}
             onSendInsight={(insight) => send(insight.followUp, 'insight')}
             onSendQuick={(prompt) => send(prompt.text, 'suggestion')}
             onSendCustom={() => send(inputText, 'custom')}
             onClose={() => router.back()}
+            onResume={handleResume}
+            onDismissSaved={handleDismissSaved}
           />
         ) : (
           <ChatView
@@ -260,7 +267,7 @@ export default function CoachScreen() {
             errorBanner={errorBanner}
             inputText={inputText}
             setInputText={setInputText}
-            pinnedInsight={pinnedInsight}
+            pinnedInsights={pinnedInsights}
             scrollRef={scrollRef}
             onBack={() => setView('landing')}
             onSendCustom={() => send(inputText, 'custom')}
@@ -271,13 +278,6 @@ export default function CoachScreen() {
 
       {showLimit && (
         <LimitModal onClose={() => setShowLimit(false)} />
-      )}
-
-      {replaceConfirm && (
-        <ReplacePinModal
-          onCancel={() => setReplaceConfirm(null)}
-          onConfirm={confirmReplace}
-        />
       )}
     </SafeAreaView>
   );
@@ -292,10 +292,13 @@ interface LandingViewProps {
   inputText: string;
   setInputText: (s: string) => void;
   remaining: number;
+  savedConversation: ChatMessage[];
   onSendInsight: (insight: DataInsight) => void;
   onSendQuick: (prompt: QuickPrompt) => void;
   onSendCustom: () => void;
   onClose: () => void;
+  onResume: () => void;
+  onDismissSaved: () => void;
 }
 
 function LandingView(props: LandingViewProps) {
@@ -306,11 +309,18 @@ function LandingView(props: LandingViewProps) {
     inputText,
     setInputText,
     remaining,
+    savedConversation,
     onSendInsight,
     onSendQuick,
     onSendCustom,
     onClose,
+    onResume,
+    onDismissSaved,
   } = props;
+
+  const lastMessage = savedConversation.length
+    ? savedConversation[savedConversation.length - 1]
+    : null;
 
   const greeting = displayName ? `Hey ${displayName}, what's on your mind?` : "What's on your mind?";
   const subtext = hasData
@@ -336,6 +346,35 @@ function LandingView(props: LandingViewProps) {
             {subtext}
           </ThemedText>
         </Animated.View>
+
+        {lastMessage && (
+          <Animated.View
+            entering={FadeInDown.delay(40).springify()}
+            style={styles.resumeWrap}
+          >
+            <Pressable style={styles.resumeCard} onPress={onResume}>
+              <View style={styles.resumeIcon}>
+                <ThemedText style={styles.resumeEmoji}>💬</ThemedText>
+              </View>
+              <View style={{ flex: 1 }}>
+                <ThemedText style={styles.resumeTitle}>
+                  Continue your last conversation
+                </ThemedText>
+                <ThemedText style={styles.resumeSubtitle} numberOfLines={1}>
+                  {lastMessage.content.slice(0, 50)}
+                  {lastMessage.content.length > 50 ? '...' : ''}
+                </ThemedText>
+              </View>
+              <Pressable
+                onPress={onDismissSaved}
+                hitSlop={12}
+                style={styles.resumeDismiss}
+              >
+                <Ionicons name="close" size={16} color={TEXT_MUTED} />
+              </Pressable>
+            </Pressable>
+          </Animated.View>
+        )}
 
         {insights.length > 0 && (
           <View style={styles.insightsBlock}>
@@ -404,7 +443,7 @@ interface ChatViewProps {
   errorBanner: string | null;
   inputText: string;
   setInputText: (s: string) => void;
-  pinnedInsight: ReturnType<typeof useCoachStore.getState>['pinnedInsight'];
+  pinnedInsights: PinnedInsightState[];
   scrollRef: React.RefObject<ScrollView | null>;
   onBack: () => void;
   onSendCustom: () => void;
@@ -418,12 +457,13 @@ function ChatView(props: ChatViewProps) {
     errorBanner,
     inputText,
     setInputText,
-    pinnedInsight,
+    pinnedInsights,
     scrollRef,
     onBack,
     onSendCustom,
     onPin,
   } = props;
+  const pinsFull = pinnedInsights.length >= 3;
 
   return (
     <View style={{ flex: 1 }}>
@@ -458,7 +498,8 @@ function ChatView(props: ChatViewProps) {
                   <PinButton
                     text={m.action}
                     messageId={m.id}
-                    isPinned={pinnedInsight?.fromMessageId === m.id}
+                    isPinned={pinnedInsights.some((p) => p.fromMessageId === m.id)}
+                    pinsFull={pinsFull}
                     onPin={onPin}
                   />
                 </View>
@@ -493,24 +534,33 @@ function PinButton({
   text,
   messageId,
   isPinned,
+  pinsFull,
   onPin,
 }: {
   text: string;
   messageId: string;
   isPinned: boolean;
+  pinsFull: boolean;
   onPin: (text: string, messageId: string) => void;
 }) {
+  const disabled = isPinned || (pinsFull && !isPinned);
+  const label = isPinned
+    ? '📌 Pinned'
+    : pinsFull
+      ? '3/3 pins used'
+      : '📌 Pin to Home';
+
   return (
     <Pressable
       style={styles.pinButton}
-      onPress={() => !isPinned && onPin(text, messageId)}
+      onPress={() => !disabled && onPin(text, messageId)}
       hitSlop={8}
-      disabled={isPinned}
+      disabled={disabled}
     >
       <ThemedText
-        style={[styles.pinButtonText, isPinned && styles.pinButtonTextPinned]}
+        style={[styles.pinButtonText, disabled && styles.pinButtonTextPinned]}
       >
-        {isPinned ? '📌 Pinned' : '📌 Pin to Home'}
+        {label}
       </ThemedText>
     </Pressable>
   );
@@ -594,33 +644,6 @@ function LimitModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function ReplacePinModal({
-  onCancel,
-  onConfirm,
-}: {
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <Modal transparent animationType="fade" onRequestClose={onCancel}>
-      <View style={styles.modalOverlay}>
-        <Animated.View entering={FadeInDown.springify().damping(15)} style={styles.modalCard}>
-          <ThemedText style={styles.modalTitle}>Replace pinned insight?</ThemedText>
-          <ThemedText style={styles.modalBody}>
-            Your current pinned insight will be replaced with this one.
-          </ThemedText>
-          <Pressable style={styles.primaryButton} onPress={onConfirm}>
-            <ThemedText style={styles.primaryButtonText}>Replace</ThemedText>
-          </Pressable>
-          <Pressable onPress={onCancel} hitSlop={8} style={{ marginTop: 12 }}>
-            <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
-          </Pressable>
-        </Animated.View>
-      </View>
-    </Modal>
-  );
-}
-
 /* ─── Styles ───────────────────────────────────────────────── */
 
 const styles = StyleSheet.create({
@@ -668,6 +691,35 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 13,
     color: TEXT_MUTED,
+  },
+  resumeWrap: {
+    marginTop: 18,
+  },
+  resumeCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  resumeIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#EEF4FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resumeEmoji: { fontSize: 16 },
+  resumeTitle: { fontSize: 13, color: TEXT_PRIMARY, fontFamily: Typography.fonts.bodySemiBold },
+  resumeSubtitle: { fontSize: 12, color: TEXT_MUTED, marginTop: 2 },
+  resumeDismiss: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   insightsBlock: {
     marginTop: 20,

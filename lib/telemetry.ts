@@ -26,7 +26,11 @@ export type AnalyticsEventName =
   | 'coach_pinned_dismissed'
   | 'coach_limit_reached'
   | 'coach_premium_viewed'
-  | 'coach_premium_tapped';
+  | 'coach_premium_tapped'
+  | 'coach_conversation_resumed'
+  | 'coach_conversation_dismissed'
+  | 'manual_entry_ai_fill'
+  | 'feedback_submitted';
 
 interface QueuedEvent {
   event_name: AnalyticsEventName;

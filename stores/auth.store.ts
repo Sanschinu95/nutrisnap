@@ -7,6 +7,9 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import type { Session, User } from '@supabase/supabase-js';
+import { useDailyStore } from './daily.store';
+import { useCoachStore } from './coach.store';
+import { useUserStore } from './user.store';
 
 type PendingAction = () => Promise<void>;
 
@@ -57,19 +60,53 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         console.warn('Auth init error:', error.message);
       }
 
+      const initialUser = session?.user ?? null;
       set({
         session: session ?? null,
-        user: session?.user ?? null,
+        user: initialUser,
         isLoading: false,
         isInitialized: true,
       });
 
-      // Listen for auth changes
-      supabase.auth.onAuthStateChange((_event, session) => {
+      // Prime per-user stores for the initial session.
+      if (initialUser) {
+        useCoachStore.getState().loadPersistedState(initialUser.id);
+      } else {
+        useCoachStore.getState().resetAll();
+      }
+
+      // Listen for auth changes — when the user changes (sign-in, sign-out,
+      // or account switch) reset volatile stores and re-hydrate for the new
+      // identity so AsyncStorage state never leaks across accounts.
+      supabase.auth.onAuthStateChange((event, nextSession) => {
+        const prevUserId = get().user?.id ?? null;
+        const nextUser = nextSession?.user ?? null;
+        const nextUserId = nextUser?.id ?? null;
+
         set({
-          session: session ?? null,
-          user: session?.user ?? null,
+          session: nextSession ?? null,
+          user: nextUser,
         });
+
+        const userChanged = prevUserId !== nextUserId;
+        const isSignOut = event === 'SIGNED_OUT' || !nextUserId;
+
+        if (isSignOut) {
+          useDailyStore.getState().reset();
+          useUserStore.getState().reset();
+          useCoachStore.getState().resetAll();
+          return;
+        }
+
+        if (userChanged) {
+          useDailyStore.getState().reset();
+          useUserStore.getState().reset();
+          useCoachStore.getState().resetAll();
+          // Re-load for new user.
+          useCoachStore.getState().loadPersistedState(nextUserId);
+          useUserStore.getState().loadProfile();
+          useDailyStore.getState().loadToday();
+        }
       });
     } catch (error) {
       console.error('Auth initialization failed:', error);
@@ -109,6 +146,10 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     try {
       set({ isLoading: true });
       await supabase.auth.signOut();
+      // Reset volatile stores immediately so the next account starts clean.
+      useDailyStore.getState().reset();
+      useUserStore.getState().reset();
+      useCoachStore.getState().resetAll();
       set({
         session: null,
         user: null,
@@ -116,6 +157,9 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       });
     } catch (error) {
       console.error('Sign out error:', error);
+      useDailyStore.getState().reset();
+      useUserStore.getState().reset();
+      useCoachStore.getState().resetAll();
       set({ session: null, user: null, isLoading: false });
     }
   },
