@@ -1,10 +1,9 @@
 /**
- * Floating coach button — bottom-left, symmetric counterpart to the green
- * scan FAB on the right. Same size (44), same vertical position, calm blue
- * identity. Discoverable but never attention-grabbing.
+ * Floating coach button — bottom-right, where the green scan FAB used to live.
+ * Big, blue, prominent. Coach is the premium feature, so it gets the FAB slot.
  */
 
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -12,9 +11,10 @@ import Animated, { FadeIn, FadeOut, ZoomIn } from 'react-native-reanimated';
 import { trackEvent } from '@/lib/telemetry';
 
 export const COACH_BLUE = '#3D8BFF';
+const FAB_SIZE = 56;
 
 interface CoachFABProps {
-  /** Hide on screens where it shouldn't appear (matches scan FAB's isHome). */
+  /** Hide on screens where it shouldn't appear (matches old scan FAB's isHome). */
   hidden?: boolean;
 }
 
@@ -40,20 +40,18 @@ export function CoachFAB({ hidden = false }: CoachFABProps) {
           accessibilityLabel="Open nutrition coach"
           accessibilityRole="button"
         >
-          <Ionicons name="chatbubble-ellipses-outline" size={22} color="#FFFFFF" />
+          <Ionicons name="chatbubble-ellipses" size={26} color="#FFFFFF" />
         </Pressable>
       </Animated.View>
     </Animated.View>
   );
 }
 
-const FAB_SIZE = 44;
-
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: -FAB_SIZE + 12, // matches scan FAB's overlap
-    left: -36, // symmetric to scan FAB which sits right: -48 (slightly narrower)
+    top: -FAB_SIZE + 12,
+    right: -48,
     zIndex: 10,
   },
   fab: {

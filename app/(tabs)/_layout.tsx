@@ -1,7 +1,7 @@
 import { Tabs } from 'expo-router';
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, BorderRadius, Shadows, Typography } from '@/constants/theme';
+import { Colors, BorderRadius, Typography } from '@/constants/theme';
 import { ThemedText } from '@/components/ui/ThemedText';
 import { useEffect, useRef, useCallback } from 'react';
 import Animated, {
@@ -12,10 +12,6 @@ import Animated, {
   interpolate,
   interpolateColor,
   Easing,
-  FadeIn,
-  FadeOut,
-  ZoomIn,
-  ZoomOut,
 } from 'react-native-reanimated';
 import Svg, { Rect } from 'react-native-svg';
 import { useUIStore } from '@/stores/ui.store';
@@ -251,42 +247,12 @@ function AnimatedTabBar({ state, navigation }: any) {
   }));
 
 
-  // ── FAB press handler ──
-  const onFabPress = useCallback(() => {
-    const scanTab = TAB_CONFIG.findIndex((t) => t.name === 'camera');
-    if (scanTab >= 0) onPress(scanTab);
-  }, [onPress]);
-
   const isHome = idx === 0;
 
   return (
     <Animated.View style={[styles.barWrap, barAnimStyle]} pointerEvents={hideTabBar ? 'none' : 'auto'}>
-      {/* ── Coach FAB — visible only on Home, symmetric to Scan FAB ── */}
+      {/* ── Coach FAB — the only floating button, lives where the scan FAB used to be ── */}
       <CoachFAB hidden={!isHome} />
-      {/* ── Quick-Scan FAB — visible only on Home ── */}
-      {isHome && (
-        <Animated.View
-          entering={FadeIn.duration(300).springify().damping(14)}
-          exiting={FadeOut.duration(200)}
-          style={styles.fabContainer}
-        >
-          <Animated.View
-            entering={ZoomIn.duration(400).springify().damping(12)}
-          >
-            <Pressable
-              onPress={onFabPress}
-              style={({ pressed }) => [
-                styles.fab,
-                pressed && styles.fabPressed,
-              ]}
-              accessibilityLabel="Quick scan food"
-              accessibilityRole="button"
-            >
-              <Ionicons name="scan-circle" size={30} color="#FFFFFF" />
-            </Pressable>
-          </Animated.View>
-        </Animated.View>
-      )}
 
       {/* ── White pill with shadow ── */}
       <View style={[styles.pill, { borderRadius: BR }]}>
@@ -360,8 +326,6 @@ function AnimatedTabBar({ state, navigation }: any) {
 
 /* ─── Styles ───────────────────────────────────────────────────── */
 
-const FAB_SIZE = 56;
-
 const styles = StyleSheet.create({
   barWrap: {
     position: 'absolute',
@@ -369,27 +333,6 @@ const styles = StyleSheet.create({
     right: 72,
     bottom: 22,
     height: 64,
-  },
-  fabContainer: {
-    position: 'absolute',
-    top: -FAB_SIZE + 12, // overlap the nav bar by ~12px
-    right: -48, // sit ~24px from screen edge (barWrap is inset 72px)
-    zIndex: 10,
-  },
-  fab: {
-    width: FAB_SIZE,
-    height: FAB_SIZE,
-    borderRadius: FAB_SIZE / 2,
-    backgroundColor: '#22C55E',
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Shadows.fab,
-    // Override shadow color to match green
-    shadowColor: '#22C55E',
-  },
-  fabPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.93 }],
   },
   pill: {
     flex: 1,
