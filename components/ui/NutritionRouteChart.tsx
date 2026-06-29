@@ -29,6 +29,8 @@ import Svg, {
 } from 'react-native-svg';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { Colors } from '@/constants/theme';
+import { computeRoutePoints, type RouteMealInput } from '@/lib/routePoints';
+import { buildAreaPath as buildSharedAreaPath, buildSplinePath as buildSharedSplinePath, projectPoints, type Padding as RoutePadding } from '@/lib/routeSpline';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -78,90 +80,6 @@ const MOCK_DATA: RouteDataPoint[] = [
 ];
 
 const MOCK_SECONDARY = [22, 35, 48, 55, 62, 74, 80];
-
-// ─── Monotone cubic Hermite interpolation ─────────────────────────────────────
-
-/**
- * Compute monotone cubic tangent slopes for a sequence of (x, y) points.
- * Equivalent to d3.curveMonotoneX — the resulting spline passes through every
- * data point with C1 continuity and monotonicity between adjacent points.
- */
-function monotoneTangents(points: { x: number; y: number }[]): number[] {
-  const n = points.length;
-  if (n < 2) return new Array(n).fill(0);
-
-  const deltas: number[] = [];
-  const slopes: number[] = [];
-
-  for (let i = 0; i < n - 1; i++) {
-    const dx = points[i + 1].x - points[i].x;
-    deltas.push(dx === 0 ? 0 : (points[i + 1].y - points[i].y) / dx);
-  }
-
-  // Initial tangent estimates (three-point formula)
-  slopes.push(deltas[0]);
-  for (let i = 1; i < n - 1; i++) {
-    if (deltas[i - 1] * deltas[i] <= 0) {
-      slopes.push(0);
-    } else {
-      slopes.push((deltas[i - 1] + deltas[i]) / 2);
-    }
-  }
-  slopes.push(deltas[n - 2]);
-
-  // Enforce monotonicity (Fritsch–Carlson)
-  for (let i = 0; i < n - 1; i++) {
-    if (Math.abs(deltas[i]) < 1e-12) {
-      slopes[i] = 0;
-      slopes[i + 1] = 0;
-      continue;
-    }
-    const alpha = slopes[i] / deltas[i];
-    const beta = slopes[i + 1] / deltas[i];
-    const s = alpha * alpha + beta * beta;
-    if (s > 9) {
-      const t = 3 / Math.sqrt(s);
-      slopes[i] = t * alpha * deltas[i];
-      slopes[i + 1] = t * beta * deltas[i];
-    }
-  }
-
-  return slopes;
-}
-
-/**
- * Build an SVG cubic-bezier path string from a set of points using
- * monotone-cubic Hermite interpolation.
- */
-function buildSplinePath(points: { x: number; y: number }[]): string {
-  if (points.length === 0) return '';
-  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
-
-  const tangents = monotoneTangents(points);
-  let d = `M ${points[0].x} ${points[0].y}`;
-
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[i];
-    const p1 = points[i + 1];
-    const dx = (p1.x - p0.x) / 3;
-    const cp1x = p0.x + dx;
-    const cp1y = p0.y + tangents[i] * dx;
-    const cp2x = p1.x - dx;
-    const cp2y = p1.y - tangents[i + 1] * dx;
-    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p1.x} ${p1.y}`;
-  }
-  return d;
-}
-
-/**
- * Build a closed area path (for gradient fill beneath the spline).
- * Closes downward to the baseline y.
- */
-function buildAreaPath(points: { x: number; y: number }[], baselineY: number): string {
-  if (points.length < 2) return '';
-  const spline = buildSplinePath(points);
-  return `${spline} L ${points[points.length - 1].x} ${baselineY} L ${points[0].x} ${baselineY} Z`;
-}
 
 // ─── Data → pixel coordinate mapping ──────────────────────────────────────────
 
@@ -217,8 +135,8 @@ function renderSpline(
   strokeColor: string,
 ) {
   if (points.length < 2) return null;
-  const curvePath = buildSplinePath(points);
-  const areaPath = buildAreaPath(points, baselineY);
+  const curvePath = buildSharedSplinePath(points);
+  const areaPath = buildSharedAreaPath(curvePath, points, baselineY);
 
   return (
     <G>
@@ -385,7 +303,7 @@ function renderDualLine(
       {gridLines}
       {primaryPoints.length >= 2 && (
         <Path
-          d={buildSplinePath(primaryPoints)}
+          d={buildSharedSplinePath(primaryPoints)}
           stroke={Colors.routePink}
           strokeWidth={2.5}
           fill="none"
@@ -394,7 +312,7 @@ function renderDualLine(
       )}
       {secondaryPoints.length >= 2 && (
         <Path
-          d={buildSplinePath(secondaryPoints)}
+          d={buildSharedSplinePath(secondaryPoints)}
           stroke={Colors.chartBlue}
           strokeWidth={2.5}
           fill="none"
@@ -523,10 +441,32 @@ export function NutritionRouteChart({
   const plotW = svgWidth - PADDING.left - PADDING.right;
   const plotH = svgHeight - PADDING.top - PADDING.bottom;
 
-  // Map data → pixel coordinates
+  // Spline mode uses the shared cumulative-calorie + time-position computation
+  // so the in-app chart and the share-card chart always match.
+  const splinePixelPoints = useMemo(() => {
+    if (mode !== 'spline') return [];
+    const meals: RouteMealInput[] = displayData.map((d) => ({
+      id: d.mealId,
+      occurredAt: d.timestamp,
+      calories: d.calories,
+      thumbnailUrl: d.thumbnailUrl,
+    }));
+    const points = computeRoutePoints(meals);
+    if (orientation === 'vertical') {
+      // Vertical layout flips axes — x is calorie amplitude, y is time top→bottom.
+      // Project with swapped roles by transforming the normalized points first.
+      const swapped = points.map((p) => ({ ...p, x: p.y, y: 1 - p.x }));
+      return projectPoints(swapped, svgWidth, svgHeight, PADDING as RoutePadding);
+    }
+    return projectPoints(points, svgWidth, svgHeight, PADDING as RoutePadding);
+  }, [mode, displayData, orientation, svgWidth, svgHeight]);
+
+  // Bar / dual-line modes keep their index-based mapping; they're not cumulative.
   const primaryPoints = useMemo(
-    () => mapDataToPoints(displayData, plotW, plotH, orientation),
-    [displayData, plotW, plotH, orientation],
+    () => (mode === 'spline'
+      ? splinePixelPoints
+      : mapDataToPoints(displayData, plotW, plotH, orientation)),
+    [mode, splinePixelPoints, displayData, plotW, plotH, orientation],
   );
 
   const secondaryPoints = useMemo(

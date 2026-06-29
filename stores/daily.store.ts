@@ -151,7 +151,7 @@ export const useDailyStore = create<DailyStore>((set, get) => ({
           .select('*, food_items(*)')
           .eq('user_id', user.id)
           .gte('occurred_at_utc', startOfDay.toISOString())
-          .order('occurred_at_utc', { ascending: false }),
+          .order('occurred_at_utc', { ascending: true }),
         supabase
           .from('hydration_logs')
           .select('amount_ml')
@@ -174,7 +174,7 @@ export const useDailyStore = create<DailyStore>((set, get) => ({
           .select('*')
           .eq('user_id', user.id)
           .gte('logged_at', startOfDay.toISOString())
-          .order('logged_at', { ascending: false });
+          .order('logged_at', { ascending: true });
         if (entriesResult.error) throw entriesResult.error;
         entries = entriesResult.data as FoodEntry[] || [];
       }
@@ -285,9 +285,9 @@ export const useDailyStore = create<DailyStore>((set, get) => ({
         insertedEntry = legacyEntry as FoodEntry;
       }
 
-      // Update local state
+      // Update local state — append, since entries are ordered ASC by occurred_at
       const { entries, waterMl, isCheatDay } = get();
-      const newEntries = [insertedEntry, ...entries];
+      const newEntries = [...entries, insertedEntry];
       const today = getTodayDate();
       const newSummary = buildSummary(today, user.id, newEntries, waterMl, isCheatDay);
 

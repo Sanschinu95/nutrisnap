@@ -11,6 +11,8 @@ import Share, { Social } from 'react-native-share';
 import ViewShot from 'react-native-view-shot';
 import Svg, { Circle, ClipPath, Defs, G, Image as SvgImage, LinearGradient, Path, Stop, Text as SvgText } from 'react-native-svg';
 import { Colors, Typography } from '@/constants/theme';
+import { computeRoutePoints, type RouteMealInput } from '@/lib/routePoints';
+import { buildAreaPath, buildSplinePath, projectPoints } from '@/lib/routeSpline';
 
 const STORY_W = 1080;
 const STORY_H = 1920;
@@ -69,40 +71,6 @@ function parseRoute(value?: string): RouteDatum[] {
   }
 }
 
-function tangents(points: { x: number; y: number }[]) {
-  if (points.length < 2) return new Array(points.length).fill(0) as number[];
-  const delta = points.slice(0, -1).map((point, i) => (points[i + 1].y - point.y) / (points[i + 1].x - point.x || 1));
-  const slope = [delta[0]];
-  for (let i = 1; i < points.length - 1; i += 1) slope.push(delta[i - 1] * delta[i] <= 0 ? 0 : (delta[i - 1] + delta[i]) / 2);
-  slope.push(delta[delta.length - 1]);
-  delta.forEach((d, i) => {
-    if (Math.abs(d) < 1e-12) { slope[i] = 0; slope[i + 1] = 0; return; }
-    const a = slope[i] / d; const b = slope[i + 1] / d; const sum = a * a + b * b;
-    if (sum > 9) { const scale = 3 / Math.sqrt(sum); slope[i] = scale * a * d; slope[i + 1] = scale * b * d; }
-  });
-  return slope;
-}
-
-function spline(points: { x: number; y: number }[]) {
-  if (!points.length) return '';
-  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
-  const slope = tangents(points);
-  return points.slice(0, -1).reduce((path, point, i) => {
-    const next = points[i + 1]; const dx = (next.x - point.x) / 3;
-    return `${path} C ${point.x + dx} ${point.y + slope[i] * dx}, ${next.x - dx} ${next.y - slope[i + 1] * dx}, ${next.x} ${next.y}`;
-  }, `M ${points[0].x} ${points[0].y}`);
-}
-
-function minuteOfDay(value: string | undefined, index: number, count: number) {
-  if (value) {
-    const date = new Date(value);
-    if (!Number.isNaN(date.getTime())) return date.getHours() * 60 + date.getMinutes();
-    const match = value.match(/^(\d{1,2}):(\d{2})/);
-    if (match) return Number(match[1]) * 60 + Number(match[2]);
-  }
-  return count === 1 ? 720 : 420 + index / (count - 1) * 840;
-}
-
 function timeLabel(value: string | undefined, index: number) {
   if (!value) return `${index + 1}`;
   const date = new Date(value);
@@ -116,34 +84,47 @@ function timeLabel(value: string | undefined, index: number) {
 function RouteGraph({ data, width, height, dark, labels = true, brand = false }: {
   data: RouteDatum[]; width: number; height: number; dark: boolean; labels?: boolean; brand?: boolean;
 }) {
-  const u = width / 920; const padX = 54 * u; const padTop = 62 * u; const padBottom = (labels ? 80 : 42) * u;
-  const maxCal = Math.max(...data.map(item => item.calories), 1);
-  const minutes = data.map((item, i) => minuteOfDay(item.timestamp, i, data.length));
-  const min = Math.min(...minutes); const max = Math.max(...minutes);
-  const points = data.map((item, i) => ({
-    x: padX + (max === min ? .5 : (minutes[i] - min) / (max - min)) * (width - padX * 2),
-    y: padTop + (1 - item.calories / maxCal) * (height - padTop - padBottom),
+  const u = width / 920;
+  const padX = 54 * u;
+  const padTop = 62 * u;
+  const padBottom = (labels ? 80 : 42) * u;
+
+  // Shared transform: cumulative calories on Y, time position on X — same as
+  // the in-app NutritionRouteChart spline mode. Both views render the same shape.
+  const mealInputs: RouteMealInput[] = data.map((d, i) => ({
+    id: `route-${i}`,
+    occurredAt: d.timestamp ?? '',
+    calories: d.calories,
+    thumbnailUrl: d.thumbnailUrl,
   }));
-  const path = spline(points); const baseline = height - padBottom + 12 * u;
-  const area = points.length > 1 ? `${path} L ${points.at(-1)!.x} ${baseline} L ${points[0].x} ${baseline} Z` : '';
+  const routePoints = computeRoutePoints(mealInputs);
+  const padding = { top: padTop, right: padX, bottom: padBottom, left: padX };
+  const points = projectPoints(routePoints, width, height, padding);
+
+  const path = buildSplinePath(points);
+  const baseline = height - padBottom + 12 * u;
+  const area = buildAreaPath(path, points, baseline);
   const gradientId = `route-${dark ? 'd' : 'l'}-${Math.round(width)}`;
+
   return <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
     <Defs>
       <LinearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1"><Stop offset="0" stopColor={Colors.routePink} stopOpacity={dark ? .42 : .28} /><Stop offset="1" stopColor={Colors.routePink} stopOpacity="0" /></LinearGradient>
-      {data.map((_, i) => <ClipPath id={`clip-${Math.round(width)}-${i}`} key={i}><Circle cx={points[i].x} cy={points[i].y} r={25 * u} /></ClipPath>)}
+      {points.map((p, i) => <ClipPath id={`clip-${Math.round(width)}-${i}`} key={i}><Circle cx={p.x} cy={p.y} r={25 * u} /></ClipPath>)}
     </Defs>
     {area ? <Path d={area} fill={`url(#${gradientId})`} /> : null}
     {dark && path ? <Path d={path} stroke={Colors.routePink} strokeWidth={18 * u} opacity={.2} fill="none" strokeLinecap="round" /> : null}
     {path ? <Path d={path} stroke={Colors.routePink} strokeWidth={8 * u} fill="none" strokeLinecap="round" strokeLinejoin="round" /> : null}
     {points.map((point, i) => {
-      const r = 25 * u; const image = data[i].thumbnailUrl;
+      const r = 25 * u;
+      const meal = routePoints[i];
+      const image = meal?.thumbnailUrl;
       return <G key={i}>
         <Circle cx={point.x} cy={point.y} r={r + 7 * u} fill={dark ? '#151219' : '#FFF'} stroke={Colors.routePink} strokeWidth={5 * u} />
         {image ? <SvgImage href={image} x={point.x - r} y={point.y - r} width={r * 2} height={r * 2} clipPath={`url(#clip-${Math.round(width)}-${i})`} preserveAspectRatio="xMidYMid slice" /> : <Circle cx={point.x} cy={point.y} r={r} fill={dark ? '#31232C' : '#F7DCE7'} />}
         {!image ? <Circle cx={point.x} cy={point.y} r={7 * u} fill={Colors.routePink} /> : null}
       </G>;
     })}
-    {labels ? points.map((point, i) => <SvgText key={i} x={point.x} y={height - 22 * u} fill={dark ? 'rgba(255,255,255,.58)' : '#786F68'} fontSize={22 * u} fontWeight="600" textAnchor="middle">{timeLabel(data[i].timestamp, i)}</SvgText>) : null}
+    {labels ? points.map((point, i) => <SvgText key={i} x={point.x} y={height - 22 * u} fill={dark ? 'rgba(255,255,255,.58)' : '#786F68'} fontSize={22 * u} fontWeight="600" textAnchor="middle">{timeLabel(routePoints[i]?.occurredAt, i)}</SvgText>) : null}
     {brand ? <SvgText x={width - 30 * u} y={36 * u} fill={dark ? 'rgba(255,255,255,.72)' : '#5F5550'} fontSize={22 * u} fontWeight="800" textAnchor="end" letterSpacing={2 * u}>NUTRISNAP</SvgText> : null}
   </Svg>;
 }
