@@ -351,6 +351,16 @@ export default function ConfirmScreen() {
                   <ThemedText variant="button" color={feedback === 'incorrect' ? Colors.white : Colors.orange}>Incorrect</ThemedText>
                 </Pressable>
               </View>
+              <Pressable
+                style={styles.cancelScanButton}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  router.replace('/(tabs)/home');
+                }}
+              >
+                <Ionicons name="close-circle-outline" size={18} color={Colors.muted} />
+                <ThemedText variant="button" color={Colors.muted}>Cancel scan</ThemedText>
+              </Pressable>
             </View>
           )}
 
@@ -570,6 +580,15 @@ const styles = StyleSheet.create({
   feedbackActiveOrange: {
     backgroundColor: Colors.orange,
     borderColor: Colors.orange,
+  },
+  cancelScanButton: {
+    marginTop: Spacing.sm,
+    minHeight: 44,
+    borderRadius: BorderRadius.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
   },
   correctionCard: {
     backgroundColor: Colors.white,

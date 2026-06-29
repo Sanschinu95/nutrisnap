@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Dimensions, Image, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Dimensions, Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -210,6 +210,7 @@ export default function ShareStoryScreen() {
   const [routeNote, setRouteNote] = useState<string>(DEFAULT_NOTE.route);
   const [statsNote, setStatsNote] = useState<string>(DEFAULT_NOTE.stats);
   const [editing, setEditing] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
   const storyRef = useRef<ViewShot>(null); const stickerRef = useRef<ViewShot>(null);
   const data = useMemo<ShareData>(() => ({ calories: numeric(params.calories, 1842), streak: numeric(params.streak, 5), protein: numeric(params.protein, 87), carbs: numeric(params.carbs, 214), fat: numeric(params.fat, 63), route: parseRoute(params.chartData) }), [params]);
   const note = template === 'route' ? routeNote : statsNote;
@@ -302,7 +303,13 @@ export default function ShareStoryScreen() {
   return <View style={s.screen}>
     <SafeAreaView style={s.safe}>
       <View style={s.header}><Pressable accessibilityLabel="Close" style={s.close} onPress={() => router.back()}><Ionicons name="close" size={25} color="#FFF" /></Pressable><View style={s.headerCopy}><Text style={s.title}>Share your day</Text><Text style={s.subtitle}>Choose how your route shows up.</Text></View><View style={{ width: 44 }} /></View>
+      <KeyboardAvoidingView
+        style={s.scroll}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={20}
+      >
       <ScrollView
+        ref={scrollRef}
         style={s.scroll}
         contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -326,7 +333,13 @@ export default function ShareStoryScreen() {
             returnKeyType="done"
           />
         ) : (
-          <Pressable style={s.notePress} onPress={() => setEditing(true)}>
+          <Pressable
+            style={s.notePress}
+            onPress={() => {
+              setEditing(true);
+              requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+            }}
+          >
             <Ionicons name="create-outline" size={14} color="rgba(255,255,255,.6)" />
             <Text style={s.noteText} numberOfLines={2}>{note || 'Add a personal note...'}</Text>
           </Pressable>
@@ -345,6 +358,7 @@ export default function ShareStoryScreen() {
       {error ? <View style={s.error}><Ionicons name="alert-circle-outline" size={18} color="#FFF" /><Text style={s.errorText}>{error}</Text><Pressable onPress={() => setError(null)}><Ionicons name="close" size={17} color="rgba(255,255,255,.7)" /></Pressable></View> : null}
       <View style={s.actions}><Pressable style={[s.shareButton, busy && s.disabled]} disabled={!!busy} onPress={share}><Ionicons name="share-outline" size={21} color="#0B090D" /><Text style={s.shareText}>{busy === 'share' ? 'Opening…' : 'Share'}</Text></Pressable><Pressable accessibilityLabel="Share to Instagram Stories" style={[s.igButton, busy && s.disabled]} disabled={!!busy} onPress={instagram}><Ionicons name="logo-instagram" size={22} color="#FFF" /><Text style={s.igText}>{busy === 'instagram' ? 'Opening…' : 'Story'}</Text></Pressable></View>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
     <View pointerEvents="none" style={s.captureStage}><ViewShot ref={storyRef} options={{ format: 'png', quality: 1, result: 'tmpfile' }} style={{ width: STORY_W, height: STORY_H }}><Artwork template={template} data={data} width={STORY_W} height={STORY_H} note={note} backgroundUri={backgroundUri} /></ViewShot><ViewShot ref={stickerRef} options={{ format: 'png', quality: 1, result: 'tmpfile' }} style={{ width: STICKER_W, height: stickerHeight, backgroundColor: 'transparent' }}><Sticker template={template} data={data} backgroundUri={backgroundUri} /></ViewShot></View>
   </View>;
