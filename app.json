@@ -18,6 +18,7 @@
       "infoPlist": {
         "NSCameraUsageDescription": "NutriSnap needs camera access to scan and analyze your food",
         "NSPhotoLibraryUsageDescription": "NutriSnap needs photo library access to analyze food photos",
+        "NSMotionUsageDescription": "NutriSnap uses your phone's step counter to track daily activity. Steps stay on your device.",
         "LSApplicationQueriesSchemes": ["instagram-stories"]
       }
     },
@@ -37,7 +38,8 @@
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
         "VIBRATE",
-        "RECEIVE_BOOT_COMPLETED"
+        "RECEIVE_BOOT_COMPLETED",
+        "android.permission.ACTIVITY_RECOGNITION"
       ]
     },
     "web": {

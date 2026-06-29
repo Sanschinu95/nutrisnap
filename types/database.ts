@@ -134,6 +134,14 @@ export interface Profile {
   pace_kg_per_week: number | null;
   /** Free-form list of self-reported medical conditions. Personalization only. */
   medical_conditions: string[] | null;
+  /** Daily step target. */
+  step_goal: number | null;
+  /** Default bedtime ('HH:MM:SS' in Postgres TIME). */
+  regular_sleep_time: string | null;
+  /** Default wake time. */
+  regular_wake_time: string | null;
+  /** Desired hours of sleep per night. */
+  sleep_goal_hours: number | null;
   streak_count: number;
   longest_streak: number;
   last_logged_date: string | null;

@@ -24,6 +24,9 @@ import { shouldShowFeedback } from '@/lib/feedback';
 import { BorderRadius, Colors, Shadows, Spacing } from '@/constants/theme';
 import { formatVolume, getWaterQuickAdds } from '@/lib/units';
 import { PinnedInsight } from '@/components/ui/PinnedInsight';
+import { StepsSleepRow } from '@/components/ui/StepsSleepRow';
+import { SleepMorningPrompt } from '@/components/ui/SleepMorningPrompt';
+import { useActivityStore } from '@/stores/activity.store';
 import type { FoodEntry } from '@/types/nutrition';
 import { trackEvent } from '@/lib/telemetry';
 
@@ -36,7 +39,43 @@ function getGreeting(): string {
   return 'Good Evening';
 }
 
-function getDailyInsight(entries: FoodEntry[], proteinProgress: number, hydrationProgress: number): string {
+interface DailyInsightInputs {
+  entries: FoodEntry[];
+  proteinProgress: number;
+  hydrationProgress: number;
+  steps: number;
+  stepGoal: number;
+  sleepMinutes: number;
+  sleepGoalMinutes: number;
+}
+
+function getDailyInsight({
+  entries,
+  proteinProgress,
+  hydrationProgress,
+  steps,
+  stepGoal,
+  sleepMinutes,
+  sleepGoalMinutes,
+}: DailyInsightInputs): string {
+  // Sleep is one of the most actionable signals, so surface it when it stands out.
+  if (sleepMinutes > 0 && sleepMinutes < sleepGoalMinutes - 60) {
+    const hrs = (sleepMinutes / 60).toFixed(1);
+    return `Sleep was a bit short last night (${hrs}h). Try winding down 30 min earlier tonight.`;
+  }
+  if (sleepMinutes >= sleepGoalMinutes) {
+    return `${(sleepMinutes / 60).toFixed(1)}h of sleep last night. You're trending well.`;
+  }
+
+  // Steps: nudge if we're close, celebrate if we've passed.
+  if (stepGoal > 0 && steps > 0) {
+    if (steps >= stepGoal) return `You hit ${steps.toLocaleString()} steps today. Strong day.`;
+    const remaining = stepGoal - steps;
+    if (remaining <= 2500 && remaining > 500) {
+      return `You're ${remaining.toLocaleString()} steps from your daily goal. A short walk after dinner?`;
+    }
+  }
+
   if (entries.length === 0) return 'Start with one scan and let the day take shape.';
   if (entries.some((entry) => new Date(entry.logged_at).getHours() < 11) && proteinProgress >= 0.5) {
     return 'Protein looks steadier when breakfast is part of the route.';
@@ -124,9 +163,24 @@ export default function HomeScreen() {
   const hydrationGoalDisplay = formatVolume(hydrationGoalMl, unitPref);
   const quickAddMl = getWaterQuickAdds(unitPref)[0].ml;
   const userName = profile?.name?.split(' ')[0] ?? 'there';
+  const todaySteps = useActivityStore((s) => s.todaySteps);
+  const stepGoal = useActivityStore((s) => s.stepGoal);
+  const lastNightSleep = useActivityStore((s) => s.lastNightSleep);
+  const sleepGoalHours = useActivityStore((s) => s.sleepGoalHours);
+  const sleepMinutes = lastNightSleep?.durationMinutes ?? 0;
+  const sleepGoalMinutes = Math.round(sleepGoalHours * 60);
   const insight = useMemo(
-    () => getDailyInsight(entries, proteinProgress, hydrationProgress),
-    [entries, hydrationProgress, proteinProgress]
+    () =>
+      getDailyInsight({
+        entries,
+        proteinProgress,
+        hydrationProgress,
+        steps: todaySteps,
+        stepGoal,
+        sleepMinutes,
+        sleepGoalMinutes,
+      }),
+    [entries, hydrationProgress, proteinProgress, todaySteps, stepGoal, sleepMinutes, sleepGoalMinutes],
   );
 
   // Build ring + row data based on which metric is active
@@ -299,6 +353,13 @@ export default function HomeScreen() {
             label={`${waterDisplay} / ${hydrationGoalDisplay}`}
             sublabel="Tap to log water"
           />
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(160).springify()} style={styles.stepsSleepSlot}>
+          <SleepMorningPrompt
+            onEdit={() => useActivityStore.getState().requestOpenSleepSheet()}
+          />
+          <StepsSleepRow />
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(180).springify()} style={styles.pinnedInsightSlot}>
@@ -582,6 +643,11 @@ const styles = StyleSheet.create({
   routeSection: {
     paddingHorizontal: Spacing.xl,
     marginTop: Spacing.xl,
+  },
+  stepsSleepSlot: {
+    paddingHorizontal: Spacing.xl,
+    marginTop: Spacing.lg,
+    gap: Spacing.md,
   },
   pinnedInsightSlot: {
     paddingHorizontal: Spacing.xl,

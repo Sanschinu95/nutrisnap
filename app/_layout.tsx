@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react';
 import { Stack, router, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { View, StyleSheet } from 'react-native';
+import { AppState, View, StyleSheet } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { FadeIn, FadeOut, ZoomIn } from 'react-native-reanimated';
@@ -31,6 +31,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useUserStore } from '@/stores/user.store';
 import { AuthGateModal } from '@/components/ui/AuthGateModal';
 import { useCoachStore } from '@/stores/coach.store';
+import { useActivityStore } from '@/stores/activity.store';
 import { initializeNotifications, scheduleWaterReminders, scheduleMealReminder, scheduleCoachWeeklyReview } from '@/lib/notifications';
 
 // Keep splash screen visible while we load resources
@@ -117,6 +118,8 @@ export default function RootLayout() {
       // Try loading profile for current session
       if (session?.user) {
         await loadProfile();
+        // Kick off step/sleep tracking (lazy: pedometer module is optional).
+        useActivityStore.getState().initialize(session.user.id);
       }
       // Initialize notifications
       const granted = await initializeNotifications();
@@ -139,6 +142,20 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded, fontError]);
+
+  // Re-check the morning sleep prompt and refresh today's step total whenever
+  // the user brings the app back to the foreground (covers "opened at 6am,
+  // backgrounded, reopened at 8am" and similar).
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (status) => {
+      if (status !== 'active') return;
+      const userId = useAuthStore.getState().user?.id ?? null;
+      if (!userId) return;
+      useActivityStore.getState().checkSleepPromptStatus(userId);
+      useActivityStore.getState().refreshSteps();
+    });
+    return () => sub.remove();
+  }, []);
 
 
 

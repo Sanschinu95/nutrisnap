@@ -49,6 +49,16 @@ interface HydrationRow {
   amount_ml: number;
 }
 
+interface StepsRow {
+  date: string;
+  step_count: number;
+}
+
+interface SleepRow {
+  date: string;
+  duration_minutes: number;
+}
+
 export async function buildCoachContext(): Promise<CoachContext> {
   const { profile, calorieGoal, macroGoals, hydrationGoalMl } = useUserStore.getState();
   const daily = useDailyStore.getState();
@@ -63,9 +73,12 @@ export async function buildCoachContext(): Promise<CoachContext> {
 
   let recentMeals: MealRow[] = [];
   let recentHydration: HydrationRow[] = [];
+  let recentSteps: StepsRow[] = [];
+  let recentSleep: SleepRow[] = [];
 
   if (userId && !userId.startsWith('guest_')) {
-    const [mealsRes, hydrationRes] = await Promise.all([
+    const sevenDaysAgoDate = sevenDaysAgo.toISOString().split('T')[0];
+    const [mealsRes, hydrationRes, stepsRes, sleepRes] = await Promise.all([
       supabase
         .from('meals')
         .select('occurred_at_utc, food_items(calories, protein, carbs, fat)')
@@ -77,9 +90,23 @@ export async function buildCoachContext(): Promise<CoachContext> {
         .select('occurred_at_utc, amount_ml')
         .eq('user_id', userId)
         .gte('occurred_at_utc', sevenDaysAgo.toISOString()),
+      supabase
+        .from('steps_logs')
+        .select('date, step_count')
+        .eq('user_id', userId)
+        .gte('date', sevenDaysAgoDate)
+        .order('date', { ascending: true }),
+      supabase
+        .from('sleep_logs')
+        .select('date, duration_minutes')
+        .eq('user_id', userId)
+        .gte('date', sevenDaysAgoDate)
+        .order('date', { ascending: true }),
     ]);
     recentMeals = (mealsRes.data ?? []) as MealRow[];
     recentHydration = (hydrationRes.data ?? []) as HydrationRow[];
+    recentSteps = (stepsRes.data ?? []) as StepsRow[];
+    recentSleep = (sleepRes.data ?? []) as SleepRow[];
   }
 
   const dailySummaries = computeDailySummaries(recentMeals);
@@ -88,6 +115,13 @@ export async function buildCoachContext(): Promise<CoachContext> {
   const avgWater = computeAvgWater(recentHydration);
   const mealTiming = analyzeMealTiming(recentMeals);
   const proteinTrend = computeTrend(dailySummaries.map((d) => d.protein));
+  const avgSteps = recentSteps.length ? average(recentSteps.map((s) => s.step_count)) : 0;
+  const avgSleepMinutes = recentSleep.length
+    ? average(recentSleep.map((s) => s.duration_minutes))
+    : 0;
+  const stepGoal = (profile as { step_goal?: number | null } | null)?.step_goal ?? 8000;
+  const sleepGoalHours =
+    (profile as { sleep_goal_hours?: number | null } | null)?.sleep_goal_hours ?? 8;
 
   const totalProteinToday = daily.summary?.total_protein ?? 0;
   const totalCaloriesToday = daily.summary?.total_calories ?? 0;
@@ -148,6 +182,10 @@ MEAL TIMING PATTERN:
 ${mealTiming}
 
 PROTEIN TREND: ${proteinTrend}
+
+ACTIVITY (last 7 days):
+- Steps: ${recentSteps.length ? `avg ${Math.round(avgSteps).toLocaleString()} / day, goal ${stepGoal.toLocaleString()}` : 'no data yet'}
+- Sleep: ${recentSleep.length ? `avg ${(avgSleepMinutes / 60).toFixed(1)}h / night, goal ${sleepGoalHours}h` : 'no data yet'}
 
 TODAY SO FAR:
 - Calories: ${Math.round(totalCaloriesToday)}
