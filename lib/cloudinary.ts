@@ -87,6 +87,29 @@ export async function uploadFoodImage(
 }
 
 /**
+ * Upload a feedback screenshot to Cloudinary.
+ * Returns the secure URL or null if upload fails / not configured.
+ */
+export async function uploadFeedbackScreenshot(
+  imageUri: string,
+  userId: string,
+): Promise<string | null> {
+  if (!isConfigured()) return null;
+
+  const timestamp = Date.now();
+  const formData = new FormData();
+  formData.append('file', {
+    uri: imageUri,
+    type: 'image/jpeg',
+    name: `feedback_${userId}_${timestamp}.jpg`,
+  } as any);
+  formData.append('upload_preset', UPLOAD_PRESET!);
+  formData.append('folder', `nutrisnap/feedback/${userId}`);
+
+  return uploadWithRetry(formData);
+}
+
+/**
  * Upload a profile picture to Cloudinary.
  * Returns the secure URL or null if upload fails / not configured.
  */

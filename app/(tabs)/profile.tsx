@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,8 +17,10 @@ import { exportAccountData, deleteAccountData } from '@/lib/accountData';
 import { BorderRadius, Colors, Spacing } from '@/constants/theme';
 import { formatVolume, formatWeight, unitLabel, type UnitPreference } from '@/lib/units';
 import { clearAvatar, loadAvatar, saveAvatarFromUri } from '@/lib/profileAvatar';
+import { UserFeedbackForm } from '@/components/ui/UserFeedbackForm';
+import type { UserFeedbackType } from '@/lib/userFeedback';
 
-type FeedbackType = 'Report Bug' | 'Feature Request' | null;
+type FeedbackType = UserFeedbackType | null;
 
 export default function ProfileScreen() {
   const { theme } = useTheme();
@@ -27,7 +29,6 @@ export default function ProfileScreen() {
   const { signOut, user } = useAuthStore();
   const { requireAuth } = useAuthGate();
   const [feedbackType, setFeedbackType] = useState<FeedbackType>(null);
-  const [feedbackText, setFeedbackText] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -163,12 +164,6 @@ export default function ProfileScreen() {
     }
   }, [user, signOut]);
 
-  const handleFeedbackSubmit = () => {
-    setFeedbackType(null);
-    setFeedbackText('');
-    Alert.alert('Thanks', 'Feedback captured locally for this V1 UI flow.');
-  };
-
   if (isLoading || !profile) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -251,9 +246,9 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <ThemedText variant="h3">Feedback</ThemedText>
           <View style={styles.feedbackCard}>
-            <FeedbackRow title="Report Bug" icon="bug-outline" onPress={() => setFeedbackType('Report Bug')} />
-            <FeedbackRow title="Feature Request" icon="sparkles-outline" onPress={() => setFeedbackType('Feature Request')} />
-            <FeedbackRow title="Contact Support" icon="mail-outline" onPress={() => Alert.alert('Support', 'Use your existing NutriSnap support channel.')} />
+            <FeedbackRow title="Report a bug" icon="bug-outline" onPress={() => setFeedbackType('bug_report')} />
+            <FeedbackRow title="Request a feature" icon="sparkles-outline" onPress={() => setFeedbackType('feature_request')} />
+            <FeedbackRow title="Contact support" icon="mail-outline" onPress={() => setFeedbackType('contact_support')} />
           </View>
         </View>
 
@@ -320,23 +315,13 @@ export default function ProfileScreen() {
         <View style={styles.bottomPadding} />
       </ScrollView>
 
-      {feedbackType && (
+      {feedbackType && user?.id && (
         <View style={styles.modalOverlay}>
-          <View style={styles.feedbackForm}>
-            <ThemedText variant="h3">{feedbackType}</ThemedText>
-            <TextInput
-              value={feedbackText}
-              onChangeText={setFeedbackText}
-              placeholder="Tell us what happened"
-              placeholderTextColor={Colors.muted}
-              multiline
-              style={styles.feedbackInput}
-            />
-            <View style={styles.formActions}>
-              <Button title="Cancel" variant="ghost" onPress={() => setFeedbackType(null)} style={styles.formButton} />
-              <Button title="Submit" onPress={handleFeedbackSubmit} style={styles.formButton} />
-            </View>
-          </View>
+          <UserFeedbackForm
+            type={feedbackType}
+            userId={user.id}
+            onClose={() => setFeedbackType(null)}
+          />
         </View>
       )}
 
@@ -640,22 +625,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(47,36,30,0.25)',
     justifyContent: 'center',
     padding: Spacing.xl,
-  },
-  feedbackForm: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.xl,
-    gap: Spacing.md,
-  },
-  feedbackInput: {
-    minHeight: 130,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.base,
-    color: Colors.brown,
-    textAlignVertical: 'top',
-    fontSize: 16,
   },
   formActions: {
     flexDirection: 'row',
