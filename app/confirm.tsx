@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { Button } from '@/components/ui/Button';
 import { ThemedText } from '@/components/ui/ThemedText';
 import { useDailyStore } from '@/stores/daily.store';
@@ -13,6 +13,10 @@ import { useAuthGate } from '@/hooks/useAuthGate';
 import { BorderRadius, Colors, Spacing } from '@/constants/theme';
 import type { FoodItem, MealSource, NutritionEntry, UserCorrection } from '@/types/nutrition';
 import { collectTrainingData } from '@/lib/datasetCollector';
+import { estimateNutrition } from '@/lib/nutritionEstimate';
+import { trackEvent } from '@/lib/telemetry';
+
+const COACH_BLUE = '#3D8BFF';
 
 type FeedbackState = 'correct' | 'incorrect' | null;
 
@@ -25,16 +29,35 @@ export default function ConfirmScreen() {
   const [originalData, setOriginalData] = useState<NutritionEntry | null>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isEstimating, setIsEstimating] = useState(false);
+  const [estimateError, setEstimateError] = useState<string | null>(null);
+  const [estimatedServing, setEstimatedServing] = useState<string | null>(null);
   const source: MealSource = ((nutritionData as any)?.source ?? 'scan') as MealSource;
   const isManual = source === 'manual';
   const successOpacity = useSharedValue(0);
   const successX = useSharedValue(0);
   const successY = useSharedValue(0);
+  const shakeX = useSharedValue(0);
+  const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const successStyle = useAnimatedStyle(() => ({
     opacity: successOpacity.value,
     transform: [{ translateX: successX.value }, { translateY: successY.value }, { scale: successOpacity.value ? 1 : 0.7 }],
   }));
+
+  const shakeStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: shakeX.value }],
+  }));
+
+  const showEstimateError = (message: string) => {
+    if (errorTimer.current) clearTimeout(errorTimer.current);
+    setEstimateError(message);
+    errorTimer.current = setTimeout(() => setEstimateError(null), 3500);
+  };
+
+  useEffect(() => () => {
+    if (errorTimer.current) clearTimeout(errorTimer.current);
+  }, []);
 
   useEffect(() => {
     if (!params.data) return;
@@ -73,6 +96,62 @@ export default function ConfirmScreen() {
       total_carbs_g: foodItems.reduce((sum, item) => sum + item.carbs_g, 0),
       total_fat_g: foodItems.reduce((sum, item) => sum + item.fat_g, 0),
     });
+  };
+
+  const handleFillWithAI = async () => {
+    if (!nutritionData) return;
+    const name = nutritionData.meal_name.trim();
+    if (!name) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      shakeX.value = withSequence(
+        withTiming(-8, { duration: 60 }),
+        withRepeat(withTiming(8, { duration: 60 }), 3, true),
+        withTiming(0, { duration: 60 }),
+      );
+      return;
+    }
+
+    try {
+      setIsEstimating(true);
+      setEstimateError(null);
+      const est = await estimateNutrition(name);
+      const existing = nutritionData.food_items[0];
+      const baseItem: FoodItem = existing ?? {
+        name,
+        quantity: est.serving_size,
+        calories: 0,
+        protein_g: 0,
+        carbs_g: 0,
+        fat_g: 0,
+        fiber_g: 0,
+        confidence: 'low',
+      };
+      const updatedItem: FoodItem = {
+        ...baseItem,
+        name: est.food_name,
+        quantity: est.serving_size,
+        calories: est.calories,
+        protein_g: est.protein_g,
+        carbs_g: est.carbs_g,
+        fat_g: est.fat_g,
+      };
+      setNutritionData({
+        ...nutritionData,
+        food_items: [updatedItem, ...nutritionData.food_items.slice(1)],
+        total_calories: est.calories,
+        total_protein_g: est.protein_g,
+        total_carbs_g: est.carbs_g,
+        total_fat_g: est.fat_g,
+      });
+      setEstimatedServing(est.serving_size);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      trackEvent('manual_entry_ai_fill', { food: est.food_name });
+    } catch (err) {
+      console.warn('AI fill failed:', err);
+      showEstimateError("Couldn't estimate. Enter manually.");
+    } finally {
+      setIsEstimating(false);
+    }
   };
 
   const calculateCorrections = (): UserCorrection[] => {
@@ -201,18 +280,51 @@ export default function ConfirmScreen() {
                 <Ionicons name="restaurant-outline" size={58} color={Colors.olive} />
               )}
             </View>
-            <TextInput
-              value={nutritionData.meal_name}
-              onChangeText={(mealName) => setNutritionData({ ...nutritionData, meal_name: mealName })}
-              style={styles.mealName}
-              placeholder="Food name"
-              placeholderTextColor={Colors.muted}
-            />
+            <Animated.View style={shakeStyle}>
+              <TextInput
+                value={nutritionData.meal_name}
+                onChangeText={(mealName) => setNutritionData({ ...nutritionData, meal_name: mealName })}
+                style={styles.mealName}
+                placeholder="Food name"
+                placeholderTextColor={Colors.muted}
+              />
+            </Animated.View>
             <View style={styles.calorieLine}>
               <ThemedText variant="h1" color={Colors.olive}>{totals.calories}</ThemedText>
               <ThemedText variant="body" color={Colors.muted}>calories</ThemedText>
             </View>
+            {estimatedServing && (
+              <ThemedText variant="label" color={Colors.muted} align="center" style={styles.servingHint}>
+                Estimated for: {estimatedServing}
+              </ThemedText>
+            )}
           </View>
+
+          {isManual && (
+            <View style={styles.aiFillRow}>
+              <Pressable
+                style={[styles.aiFillButton, isEstimating && styles.aiFillButtonBusy]}
+                onPress={handleFillWithAI}
+                disabled={isEstimating}
+                accessibilityRole="button"
+                accessibilityLabel="Auto-fill nutrition values with AI"
+              >
+                {isEstimating ? (
+                  <ActivityIndicator size="small" color={COACH_BLUE} />
+                ) : (
+                  <Ionicons name="sparkles-outline" size={16} color={COACH_BLUE} />
+                )}
+                <ThemedText variant="button" color={COACH_BLUE}>
+                  {isEstimating ? 'Estimating...' : 'Fill with AI'}
+                </ThemedText>
+              </Pressable>
+              {estimateError && (
+                <ThemedText variant="label" color={Colors.error} style={styles.aiFillError}>
+                  {estimateError}
+                </ThemedText>
+              )}
+            </View>
+          )}
 
           <View style={styles.macroCard}>
             <MacroInput label="Protein" value={totals.protein} color={Colors.olive} onChange={(value) => updateFoodItem(0, { protein_g: value })} />
@@ -382,6 +494,31 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
     gap: Spacing.sm,
     marginTop: Spacing.sm,
+  },
+  servingHint: {
+    marginTop: Spacing.xs,
+  },
+  aiFillRow: {
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginBottom: Spacing.md,
+  },
+  aiFillButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COACH_BLUE,
+    backgroundColor: 'transparent',
+  },
+  aiFillButtonBusy: {
+    opacity: 0.7,
+  },
+  aiFillError: {
+    textAlign: 'center',
   },
   macroCard: {
     backgroundColor: Colors.white,
