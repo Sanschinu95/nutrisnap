@@ -12,6 +12,7 @@
  */
 
 import { supabase } from './supabase';
+import { logSupabaseError } from './supabaseError';
 
 interface AIPrediction {
   food_name: string;
@@ -53,8 +54,10 @@ export async function collectTrainingData(params: {
 }): Promise<void> {
   try {
     const { data: { user } } = await supabase.auth.getUser();
+    // RLS only allows authenticated inserts — drop silently when anon.
+    if (!user) return;
 
-    await supabase.from('training_data').insert({
+    const { error } = await supabase.from('training_data').insert({
       image_url: params.imageUrl,
 
       ai_food_name: params.aiPrediction?.food_name ?? null,
@@ -73,8 +76,9 @@ export async function collectTrainingData(params: {
       feedback_type: params.feedbackType,
       source: params.source,
       device_locale: getDeviceLocale(),
-      contributor_id: user?.id ?? null,
+      contributor_id: user.id,
     });
+    logSupabaseError('training_data.insert', error);
   } catch {
     // Silently swallow. Dataset collection must never affect the app.
   }

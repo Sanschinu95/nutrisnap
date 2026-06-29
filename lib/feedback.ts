@@ -10,6 +10,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 import { useAuthStore } from '@/stores/auth.store';
+import { logSupabaseError } from './supabaseError';
 
 const FEEDBACK_DATE_KEY = 'nutrisnap_last_feedback_date';
 const FEEDBACK_PERMANENT_KEY = 'nutrisnap_feedback_submitted';
@@ -75,19 +76,21 @@ export async function saveFeedback(
     const user = useAuthStore.getState().user;
     if (user) {
       // Save the feedback entry
-      await supabase.from('app_feedback').insert({
+      const { error: insertError } = await supabase.from('app_feedback').insert({
         user_id: user.id,
         rating,
         comment: comment || null,
         feedback_date: today,
         created_at: new Date().toISOString(),
       });
+      logSupabaseError('app_feedback.insert', insertError);
 
       // Set the permanent flag on the profile
-      await supabase
+      const { error: updateError } = await supabase
         .from('profiles')
         .update({ feedback_submitted: true })
         .eq('id', user.id);
+      logSupabaseError('profiles.update(feedback_submitted)', updateError);
     }
   } catch (error) {
     // Supabase insert may fail if table doesn't exist — that's fine,

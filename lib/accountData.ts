@@ -57,12 +57,14 @@ export async function deleteAccountData(
     .filter((path): path is string => Boolean(path));
 
   if (storagePaths.length > 0) {
-    await supabase.storage.from(imageBucket).remove(storagePaths);
+    const { error: storageError } = await supabase.storage.from(imageBucket).remove(storagePaths);
+    if (storageError) console.warn('[Supabase] storage.remove failed:', storageError.message);
   }
 
   // De-identifies scan_feedback (sets user_id = null) so we keep the rows for
   // model training without retaining personal data.
-  await supabase.rpc('anonymize_scan_feedback_for_user', { target_user_id: userId });
+  const { error: anonError } = await supabase.rpc('anonymize_scan_feedback_for_user', { target_user_id: userId });
+  if (anonError) console.warn('[Supabase] anonymize_scan_feedback_for_user failed:', anonError.message);
 
   // De-identify the decoupled training_data rows the same way. The table's RLS
   // blocks direct user UPDATEs, so we call the SECURITY DEFINER RPC defined in

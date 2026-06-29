@@ -14,6 +14,7 @@ import {
   sendStreakNotification,
 } from '@/lib/notifications';
 import { trackEvent } from '@/lib/telemetry';
+import { logSupabaseError } from '@/lib/supabaseError';
 
 interface ProgressNotifiedFlags {
   midday?: boolean;
@@ -253,7 +254,7 @@ export const useDailyStore = create<DailyStore>((set, get) => ({
             : fullEntry.user_accepted_without_edit
               ? 'thumbs_up'
               : 'thumbs_down';
-          await supabase.from('scan_feedback').insert({
+          const { error: scanFeedbackError } = await supabase.from('scan_feedback').insert({
             meal_id: meal.id,
             food_item_id: ((insertedItems ?? []) as FoodItemRow[])[0]?.id ?? null,
             user_id: user.id,
@@ -263,6 +264,7 @@ export const useDailyStore = create<DailyStore>((set, get) => ({
               : null,
             feedback_type: feedbackType,
           });
+          logSupabaseError('scan_feedback.insert', scanFeedbackError);
         }
 
         insertedEntry = {

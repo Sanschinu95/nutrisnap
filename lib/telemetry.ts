@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
+import { logSupabaseError } from './supabaseError';
 
 export type AnalyticsEventName =
   | 'scan_started'
@@ -71,9 +72,15 @@ export async function trackEvent(
 ): Promise<void> {
   const now = new Date();
   const { data } = await supabase.auth.getUser();
+  const userId = data.user?.id ?? null;
+
+  // RLS on `events` rejects rows with null user_id (`with check (auth.uid() = user_id)`).
+  // Drop anon events client-side so they don't poison the next flush.
+  if (!userId) return;
+
   const event: QueuedEvent = {
     event_name: eventName,
-    user_id: data.user?.id ?? null,
+    user_id: userId,
     occurred_at_local: toLocalTimestamp(now),
     occurred_at_utc: now.toISOString(),
     properties,
@@ -93,8 +100,24 @@ export async function flushEvents(): Promise<void> {
   const queue = await readQueue();
   if (queue.length === 0) return;
 
-  const { error } = await supabase.from('events').insert(queue);
-  if (!error) {
-    await AsyncStorage.removeItem(STORAGE_KEY);
+  // Belt-and-suspenders: never send rows the RLS policy will reject.
+  const valid = queue.filter((e) => !!e.user_id);
+  const dropped = queue.length - valid.length;
+  if (dropped > 0) {
+    console.warn(`[Supabase] dropping ${dropped} anon events from flush queue`);
   }
+  if (valid.length === 0) {
+    await AsyncStorage.removeItem(STORAGE_KEY);
+    return;
+  }
+
+  const { error } = await supabase.from('events').insert(valid);
+  if (error) {
+    logSupabaseError('events.insert', error);
+    // Drop the queue anyway — re-queueing the same rejected rows creates an
+    // unbounded retry loop that was the root cause of the 20% failure rate.
+    await AsyncStorage.removeItem(STORAGE_KEY);
+    return;
+  }
+  await AsyncStorage.removeItem(STORAGE_KEY);
 }
