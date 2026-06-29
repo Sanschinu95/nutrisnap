@@ -80,10 +80,10 @@ export async function sendCoachMessage(
       let m: RegExpExecArray | null;
       while ((m = actionRegex.exec(fullText)) !== null) actionMatch = m;
 
-      const action = actionMatch ? actionMatch[1].trim() : null;
-      const text = fullText.replace(/\n?ACTION:\s*.+/gi, '').trim();
+      const rawAction = actionMatch ? actionMatch[1].trim() : null;
+      const rawText = fullText.replace(/\n?ACTION:\s*.+/gi, '').trim();
 
-      return { text, action };
+      return { text: cleanCoachText(rawText), action: rawAction ? cleanCoachText(rawAction) : null };
     } catch (error) {
       lastError = error;
       markKeyCooling(key, 30_000);
@@ -92,4 +92,19 @@ export async function sendCoachMessage(
 
   if (lastError instanceof Error) throw lastError;
   throw new Error('COACH_UNAVAILABLE');
+}
+
+/**
+ * Strip robotic-looking formatting: em dashes, markdown bold, bullets, headers.
+ * Belt-and-suspenders on top of the prompt rule against em dashes.
+ */
+function cleanCoachText(text: string): string {
+  return text
+    .replace(/—/g, ', ')
+    .replace(/--/g, ', ')
+    .replace(/\*\*/g, '')
+    .replace(/#{1,3}\s/g, '')
+    .replace(/^\s*[-•]\s/gm, '')
+    .replace(/,\s*,/g, ',')
+    .trim();
 }
