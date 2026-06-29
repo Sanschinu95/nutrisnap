@@ -1,10 +1,12 @@
-import React, { useMemo, useRef, useState } from 'react';
-import { Dimensions, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Dimensions, Image, Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Sharing from 'expo-sharing';
+import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Share, { Social } from 'react-native-share';
 import ViewShot from 'react-native-view-shot';
 import Svg, { Circle, ClipPath, Defs, G, Image as SvgImage, LinearGradient, Path, Stop, Text as SvgText } from 'react-native-svg';
@@ -19,6 +21,13 @@ const META_APP_ID = '1878768349457558';
 const WINDOW = Dimensions.get('window');
 const PREVIEW_W = Math.min(WINDOW.width - 40, 360, Math.max(250, (WINDOW.height - 245) * STORY_W / STORY_H));
 const PREVIEW_H = PREVIEW_W * STORY_H / STORY_W;
+
+const DEFAULT_NOTE: Record<Template, string> = {
+  route: 'Every meal shaped the day',
+  stats: 'This week in numbers',
+};
+const NOTE_STORAGE_PREFIX = 'nutrisnap.share.note';
+const NOTE_MAX = 60;
 
 type Template = 'route' | 'stats';
 type RouteDatum = { calories: number; timestamp?: string; thumbnailUrl?: string };
@@ -139,13 +148,20 @@ function RouteGraph({ data, width, height, dark, labels = true, brand = false }:
   </Svg>;
 }
 
-function RouteHero({ data, width, height }: { data: ShareData; width: number; height: number }) {
+function RouteHero({ data, width, height, note, backgroundUri }: { data: ShareData; width: number; height: number; note: string; backgroundUri: string | null }) {
   const u = width / STORY_W;
   return <View style={[s.canvas, { width, height, backgroundColor: '#0B090D' }]}>
-    <View style={[s.glow, { width: 760 * u, height: 760 * u, borderRadius: 380 * u, top: 480 * u, left: 160 * u }]} />
-    <View style={{ position: 'absolute', top: 280 * u, left: 80 * u }}>
+    {backgroundUri ? (
+      <>
+        <Image source={{ uri: backgroundUri }} style={[StyleSheet.absoluteFillObject, { width, height }]} resizeMode="cover" />
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.45)' }]} />
+      </>
+    ) : (
+      <View style={[s.glow, { width: 760 * u, height: 760 * u, borderRadius: 380 * u, top: 480 * u, left: 160 * u }]} />
+    )}
+    <View style={{ position: 'absolute', top: 280 * u, left: 80 * u, right: 80 * u }}>
       <Text style={[s.eyebrow, { fontSize: 26 * u, letterSpacing: 6 * u }]}>TODAY'S NUTRITION ROUTE</Text>
-      <Text style={[s.heroTitle, { fontSize: 70 * u, lineHeight: 78 * u, marginTop: 16 * u }]}>Every meal{`\n`}shaped the day.</Text>
+      <Text style={[s.heroTitle, { fontSize: 70 * u, lineHeight: 78 * u, marginTop: 16 * u }]}>{note || DEFAULT_NOTE.route}</Text>
     </View>
     <View style={{ position: 'absolute', top: 600 * u, left: 80 * u }}><RouteGraph data={data.route} width={920 * u} height={590 * u} dark /></View>
     <View style={{ position: 'absolute', top: 1260 * u, left: 80 * u, right: 80 * u, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
@@ -164,10 +180,19 @@ function MacroBar({ label, value, max, u }: { label: string; value: number; max:
   </View>;
 }
 
-function StatsContent({ data, width }: { data: ShareData; width: number }) {
+function StatsContent({ data, width, backgroundUri }: { data: ShareData; width: number; backgroundUri?: string | null }) {
   const u = width / 900; const maxMacro = Math.max(data.protein, data.carbs, data.fat, 1);
   return <View style={{ width, paddingHorizontal: 54 * u, paddingTop: 52 * u, paddingBottom: 58 * u }}>
-    <View style={{ height: 500 * u }}><Text style={[s.statsRouteLabel, { fontSize: 23 * u, letterSpacing: 4 * u, marginLeft: 18 * u }]}>YOUR ROUTE</Text><RouteGraph data={data.route} width={792 * u} height={440 * u} dark={false} /></View>
+    <View style={{ height: 500 * u, position: 'relative', overflow: 'hidden', borderRadius: 24 * u }}>
+      {backgroundUri ? (
+        <>
+          <Image source={{ uri: backgroundUri }} style={[StyleSheet.absoluteFillObject]} resizeMode="cover" />
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.45)' }]} />
+        </>
+      ) : null}
+      <Text style={[s.statsRouteLabel, { fontSize: 23 * u, letterSpacing: 4 * u, marginLeft: 18 * u, color: backgroundUri ? '#FFFFFF' : Colors.routePink }]}>YOUR ROUTE</Text>
+      <RouteGraph data={data.route} width={792 * u} height={440 * u} dark={!!backgroundUri} />
+    </View>
     <View style={[s.divider, { marginHorizontal: 18 * u }]} />
     <View style={{ paddingHorizontal: 18 * u, paddingTop: 34 * u }}>
       <Text style={[s.statsTotal, { fontSize: 78 * u, lineHeight: 84 * u }]}>{Math.round(data.calories).toLocaleString()}</Text><Text style={[s.statsTotalLabel, { fontSize: 23 * u, marginTop: 4 * u }]}>CALORIES TODAY</Text>
@@ -176,20 +201,22 @@ function StatsContent({ data, width }: { data: ShareData; width: number }) {
   </View>;
 }
 
-function StatsCard({ data, width, height }: { data: ShareData; width: number; height: number }) {
+function StatsCard({ data, width, height, note, backgroundUri }: { data: ShareData; width: number; height: number; note: string; backgroundUri: string | null }) {
   const u = width / STORY_W;
   return <View style={[s.canvas, { width, height, backgroundColor: '#F5F0E8' }]}>
-    <View style={{ position: 'absolute', top: 275 * u, left: 90 * u, width: 900 * u }}><Text style={[s.statsWordmark, { fontSize: 27 * u, letterSpacing: 5 * u, marginBottom: 28 * u }]}>NUTRISNAP · DAILY SNAPSHOT</Text><View style={[s.statsCard, { width: 900 * u, borderRadius: 52 * u }]}><StatsContent data={data} width={900 * u} /></View></View>
-    <Text style={[s.statsFooter, { bottom: 275 * u, left: 90 * u, fontSize: 24 * u }]}>A day of meals, mapped.</Text>
+    <View style={{ position: 'absolute', top: 275 * u, left: 90 * u, width: 900 * u }}><Text style={[s.statsWordmark, { fontSize: 27 * u, letterSpacing: 5 * u, marginBottom: 28 * u }]}>NUTRISNAP · DAILY SNAPSHOT</Text><View style={[s.statsCard, { width: 900 * u, borderRadius: 52 * u }]}><StatsContent data={data} width={900 * u} backgroundUri={backgroundUri} /></View></View>
+    <Text style={[s.statsFooter, { bottom: 275 * u, left: 90 * u, right: 90 * u, fontSize: 24 * u }]}>{note || DEFAULT_NOTE.stats}</Text>
   </View>;
 }
 
-function Artwork({ template, data, width, height }: { template: Template; data: ShareData; width: number; height: number }) {
-  return template === 'route' ? <RouteHero data={data} width={width} height={height} /> : <StatsCard data={data} width={width} height={height} />;
+function Artwork({ template, data, width, height, note, backgroundUri }: { template: Template; data: ShareData; width: number; height: number; note: string; backgroundUri: string | null }) {
+  return template === 'route'
+    ? <RouteHero data={data} width={width} height={height} note={note} backgroundUri={backgroundUri} />
+    : <StatsCard data={data} width={width} height={height} note={note} backgroundUri={backgroundUri} />;
 }
 
-function Sticker({ template, data }: { template: Template; data: ShareData }) {
-  if (template === 'stats') return <View style={{ width: STICKER_W, height: STATS_STICKER_H, backgroundColor: 'transparent', justifyContent: 'center' }}><View style={[s.statsCard, { width: STICKER_W, borderRadius: 40 }]}><StatsContent data={data} width={STICKER_W} /></View></View>;
+function Sticker({ template, data, backgroundUri }: { template: Template; data: ShareData; backgroundUri: string | null }) {
+  if (template === 'stats') return <View style={{ width: STICKER_W, height: STATS_STICKER_H, backgroundColor: 'transparent', justifyContent: 'center' }}><View style={[s.statsCard, { width: STICKER_W, borderRadius: 40 }]}><StatsContent data={data} width={STICKER_W} backgroundUri={backgroundUri} /></View></View>;
   return <View style={{ width: STICKER_W, height: ROUTE_STICKER_H, backgroundColor: 'transparent', justifyContent: 'center' }}><RouteGraph data={data.route} width={STICKER_W} height={560} dark labels={false} brand /></View>;
 }
 
@@ -198,8 +225,67 @@ export default function ShareStoryScreen() {
   const [template, setTemplate] = useState<Template>('route');
   const [busy, setBusy] = useState<'share' | 'instagram' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [backgroundUri, setBackgroundUri] = useState<string | null>(null);
+  const [routeNote, setRouteNote] = useState<string>(DEFAULT_NOTE.route);
+  const [statsNote, setStatsNote] = useState<string>(DEFAULT_NOTE.stats);
+  const [editing, setEditing] = useState(false);
   const storyRef = useRef<ViewShot>(null); const stickerRef = useRef<ViewShot>(null);
   const data = useMemo<ShareData>(() => ({ calories: numeric(params.calories, 1842), streak: numeric(params.streak, 5), protein: numeric(params.protein, 87), carbs: numeric(params.carbs, 214), fat: numeric(params.fat, 63), route: parseRoute(params.chartData) }), [params]);
+  const note = template === 'route' ? routeNote : statsNote;
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [r, st] = await Promise.all([
+          AsyncStorage.getItem(`${NOTE_STORAGE_PREFIX}.route`),
+          AsyncStorage.getItem(`${NOTE_STORAGE_PREFIX}.stats`),
+        ]);
+        if (r) setRouteNote(r);
+        if (st) setStatsNote(st);
+      } catch {
+        // ignore — defaults will apply
+      }
+    })();
+  }, []);
+
+  const persistNote = (tpl: Template, value: string) => {
+    AsyncStorage.setItem(`${NOTE_STORAGE_PREFIX}.${tpl}`, value).catch(() => {});
+  };
+
+  const handleNoteChange = (value: string) => {
+    const trimmed = value.slice(0, NOTE_MAX);
+    if (template === 'route') {
+      setRouteNote(trimmed);
+      persistNote('route', trimmed);
+    } else {
+      setStatsNote(trimmed);
+      persistNote('stats', trimmed);
+    }
+  };
+
+  const handlePickBackground = async () => {
+    try {
+      Haptics.selectionAsync();
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        setError('Photo access denied. Enable it in Settings to add a background.');
+        return;
+      }
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.9,
+      });
+      if (!res.canceled && res.assets[0]?.uri) {
+        setBackgroundUri(res.assets[0].uri);
+        setError(null);
+      }
+    } catch (reason) {
+      console.error('[Share background]', reason);
+      setError('Could not load that photo. Try another.');
+    }
+  };
+
   const capture = async (ref: React.RefObject<ViewShot | null>) => { const uri = await ref.current?.capture?.(); if (!uri) throw new Error('Could not create the share image.'); return uri; };
 
   const share = async () => {
@@ -215,7 +301,7 @@ export default function ShareStoryScreen() {
       if (Platform.OS === 'android') {
         const { isInstalled } = await Share.isPackageInstalled('com.instagram.android');
         if (!isInstalled) {
-          setError('Instagram isn\u2019t installed on this device. Use the Share button instead.');
+          setError('Instagram isn’t installed on this device. Use the Share button instead.');
           return;
         }
       }
@@ -224,31 +310,70 @@ export default function ShareStoryScreen() {
     } catch (reason) {
       console.error('[InstagramShare]', reason);
       const message = reason instanceof Error ? reason.message : '';
-      // User-cancelled shares are not errors — silently ignore
       if (/cancel/i.test(message)) return;
-      // Show a helpful message; do NOT navigate away
-      setError('Couldn\u2019t open Instagram. Try the Share button instead.');
+      setError('Couldn’t open Instagram. Try the Share button instead.');
     } finally {
       setBusy(null);
     }
   };
   const stickerHeight = template === 'route' ? ROUTE_STICKER_H : STATS_STICKER_H;
+
   return <View style={s.screen}>
     <SafeAreaView style={s.safe}>
       <View style={s.header}><Pressable accessibilityLabel="Close" style={s.close} onPress={() => router.back()}><Ionicons name="close" size={25} color="#FFF" /></Pressable><View style={s.headerCopy}><Text style={s.title}>Share your day</Text><Text style={s.subtitle}>Choose how your route shows up.</Text></View><View style={{ width: 44 }} /></View>
-      <View style={s.tabs}>{([['route', 'Route Hero'], ['stats', 'Stats Card']] as const).map(([value, label]) => <Pressable key={value} style={[s.tab, template === value && s.tabActive]} onPress={() => { Haptics.selectionAsync(); setTemplate(value); setError(null); }}><Text style={[s.tabText, template === value && s.tabTextActive]}>{label}</Text></Pressable>)}</View>
-      <View style={s.preview}><Artwork template={template} data={data} width={PREVIEW_W} height={PREVIEW_H} /></View>
+      <View style={s.tabs}>{([['route', 'Route Hero'], ['stats', 'Stats Card']] as const).map(([value, label]) => <Pressable key={value} style={[s.tab, template === value && s.tabActive]} onPress={() => { Haptics.selectionAsync(); setTemplate(value); setError(null); setEditing(false); Keyboard.dismiss(); }}><Text style={[s.tabText, template === value && s.tabTextActive]}>{label}</Text></Pressable>)}</View>
+      <View style={s.preview}><Artwork template={template} data={data} width={PREVIEW_W} height={PREVIEW_H} note={note} backgroundUri={backgroundUri} /></View>
+
+      <View style={s.noteRow}>
+        {editing ? (
+          <TextInput
+            style={s.noteInput}
+            value={note}
+            onChangeText={handleNoteChange}
+            placeholder="Add a personal note..."
+            placeholderTextColor="rgba(255,255,255,.45)"
+            maxLength={NOTE_MAX}
+            autoFocus
+            onBlur={() => setEditing(false)}
+            onSubmitEditing={() => setEditing(false)}
+            returnKeyType="done"
+          />
+        ) : (
+          <Pressable style={s.notePress} onPress={() => setEditing(true)}>
+            <Ionicons name="create-outline" size={14} color="rgba(255,255,255,.6)" />
+            <Text style={s.noteText} numberOfLines={2}>{note || 'Add a personal note...'}</Text>
+          </Pressable>
+        )}
+        <Pressable style={s.bgButton} onPress={handlePickBackground}>
+          <Ionicons name={backgroundUri ? 'image' : 'image-outline'} size={16} color="#FFF" />
+          <Text style={s.bgText}>{backgroundUri ? 'Change photo' : 'Add background photo'}</Text>
+        </Pressable>
+        {backgroundUri && (
+          <Pressable style={s.bgReset} onPress={() => setBackgroundUri(null)} hitSlop={10}>
+            <Ionicons name="close-circle" size={18} color="rgba(255,255,255,.7)" />
+          </Pressable>
+        )}
+      </View>
+
       {error ? <View style={s.error}><Ionicons name="alert-circle-outline" size={18} color="#FFF" /><Text style={s.errorText}>{error}</Text><Pressable onPress={() => setError(null)}><Ionicons name="close" size={17} color="rgba(255,255,255,.7)" /></Pressable></View> : null}
       <View style={s.actions}><Pressable style={[s.shareButton, busy && s.disabled]} disabled={!!busy} onPress={share}><Ionicons name="share-outline" size={21} color="#0B090D" /><Text style={s.shareText}>{busy === 'share' ? 'Opening…' : 'Share'}</Text></Pressable><Pressable accessibilityLabel="Share to Instagram Stories" style={[s.igButton, busy && s.disabled]} disabled={!!busy} onPress={instagram}><Ionicons name="logo-instagram" size={22} color="#FFF" /><Text style={s.igText}>{busy === 'instagram' ? 'Opening…' : 'Story'}</Text></Pressable></View>
     </SafeAreaView>
-    <View pointerEvents="none" style={s.captureStage}><ViewShot ref={storyRef} options={{ format: 'png', quality: 1, result: 'tmpfile' }} style={{ width: STORY_W, height: STORY_H }}><Artwork template={template} data={data} width={STORY_W} height={STORY_H} /></ViewShot><ViewShot ref={stickerRef} options={{ format: 'png', quality: 1, result: 'tmpfile' }} style={{ width: STICKER_W, height: stickerHeight, backgroundColor: 'transparent' }}><Sticker template={template} data={data} /></ViewShot></View>
+    <View pointerEvents="none" style={s.captureStage}><ViewShot ref={storyRef} options={{ format: 'png', quality: 1, result: 'tmpfile' }} style={{ width: STORY_W, height: STORY_H }}><Artwork template={template} data={data} width={STORY_W} height={STORY_H} note={note} backgroundUri={backgroundUri} /></ViewShot><ViewShot ref={stickerRef} options={{ format: 'png', quality: 1, result: 'tmpfile' }} style={{ width: STICKER_W, height: stickerHeight, backgroundColor: 'transparent' }}><Sticker template={template} data={data} backgroundUri={backgroundUri} /></ViewShot></View>
   </View>;
 }
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#111014' }, safe: { flex: 1, paddingHorizontal: 20 }, header: { height: 70, flexDirection: 'row', alignItems: 'center' }, close: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,.1)' }, headerCopy: { flex: 1, alignItems: 'center' }, title: { color: '#FFF', fontFamily: Typography.fonts.headingBold, fontSize: 18 }, subtitle: { color: 'rgba(255,255,255,.55)', fontFamily: Typography.fonts.body, fontSize: 12, marginTop: 2 },
   tabs: { alignSelf: 'center', width: PREVIEW_W, flexDirection: 'row', padding: 4, borderRadius: 14, backgroundColor: 'rgba(255,255,255,.08)', marginVertical: 8 }, tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 11 }, tabActive: { backgroundColor: '#FFF' }, tabText: { color: 'rgba(255,255,255,.62)', fontFamily: Typography.fonts.bodySemiBold, fontSize: 13 }, tabTextActive: { color: '#151219' },
-  preview: { alignSelf: 'center', width: PREVIEW_W, height: PREVIEW_H, overflow: 'hidden', borderRadius: 18, marginTop: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,.12)' }, actions: { flexDirection: 'row', gap: 12, width: PREVIEW_W, alignSelf: 'center', marginTop: 14, paddingBottom: 12 }, shareButton: { flex: 1, height: 52, borderRadius: 26, backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }, shareText: { color: '#0B090D', fontFamily: Typography.fonts.bodySemiBold, fontSize: 15 }, igButton: { height: 52, minWidth: 108, paddingHorizontal: 18, borderRadius: 26, backgroundColor: '#B72A68', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }, igText: { color: '#FFF', fontFamily: Typography.fonts.bodySemiBold, fontSize: 14 }, disabled: { opacity: .5 },
+  preview: { alignSelf: 'center', width: PREVIEW_W, height: PREVIEW_H, overflow: 'hidden', borderRadius: 18, marginTop: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,.12)' },
+  noteRow: { alignSelf: 'center', width: PREVIEW_W, marginTop: 12, gap: 8 },
+  notePress: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10, backgroundColor: 'rgba(255,255,255,.06)' },
+  noteText: { flex: 1, color: '#FFF', fontFamily: Typography.fonts.bodyMedium, fontSize: 13 },
+  noteInput: { paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10, backgroundColor: 'rgba(255,255,255,.1)', color: '#FFF', fontFamily: Typography.fonts.bodyMedium, fontSize: 13, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,.4)' },
+  bgButton: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,.25)' },
+  bgText: { color: '#FFF', fontFamily: Typography.fonts.bodyMedium, fontSize: 12 },
+  bgReset: { position: 'absolute', right: 4, bottom: 6 },
+  actions: { flexDirection: 'row', gap: 12, width: PREVIEW_W, alignSelf: 'center', marginTop: 14, paddingBottom: 12 }, shareButton: { flex: 1, height: 52, borderRadius: 26, backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }, shareText: { color: '#0B090D', fontFamily: Typography.fonts.bodySemiBold, fontSize: 15 }, igButton: { height: 52, minWidth: 108, paddingHorizontal: 18, borderRadius: 26, backgroundColor: '#B72A68', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }, igText: { color: '#FFF', fontFamily: Typography.fonts.bodySemiBold, fontSize: 14 }, disabled: { opacity: .5 },
   error: { width: PREVIEW_W, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, padding: 11, borderRadius: 12, backgroundColor: '#8E2D3E', marginTop: 10 }, errorText: { flex: 1, color: '#FFF', fontFamily: Typography.fonts.bodyMedium, fontSize: 12 }, captureStage: { position: 'absolute', left: -5000, top: 0 }, canvas: { overflow: 'hidden' }, glow: { position: 'absolute', backgroundColor: 'rgba(224,57,122,.06)' },
   eyebrow: { color: Colors.routePink, fontFamily: Typography.fonts.bodySemiBold }, heroTitle: { color: '#FFF', fontFamily: Typography.fonts.headingBold }, heroCalories: { color: '#FFF', fontFamily: Typography.fonts.headingBold }, heroCaloriesLabel: { color: 'rgba(255,255,255,.55)', fontFamily: Typography.fonts.bodySemiBold, letterSpacing: 3 }, streak: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,.09)', borderWidth: 1, borderColor: 'rgba(255,255,255,.15)' }, streakText: { color: '#FFF', fontFamily: Typography.fonts.bodySemiBold }, heroWordmark: { position: 'absolute', color: 'rgba(255,255,255,.58)', fontFamily: Typography.fonts.headingBold },
   statsWordmark: { color: '#6B615B', fontFamily: Typography.fonts.bodySemiBold }, statsCard: { backgroundColor: '#FFF', overflow: 'hidden', shadowColor: '#30241F', shadowOffset: { width: 0, height: 18 }, shadowOpacity: .1, shadowRadius: 30, elevation: 6 }, statsRouteLabel: { color: Colors.routePink, fontFamily: Typography.fonts.bodySemiBold }, divider: { height: 1, backgroundColor: '#EDE7E1' }, statsTotal: { color: '#2F241E', fontFamily: Typography.fonts.headingBold }, statsTotalLabel: { color: '#81766F', fontFamily: Typography.fonts.bodySemiBold, letterSpacing: 3 }, macroLabel: { color: '#625852', fontFamily: Typography.fonts.bodyMedium }, macroValue: { color: '#2F241E', fontFamily: Typography.fonts.headingSemiBold }, macroTrack: { overflow: 'hidden', backgroundColor: '#F1E8EC' }, statsFooter: { position: 'absolute', color: '#776D66', fontFamily: Typography.fonts.bodyMedium },
