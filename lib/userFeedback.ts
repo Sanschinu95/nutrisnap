@@ -6,8 +6,17 @@
 
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import * as Device from 'expo-device';
 import { supabase } from './supabase';
+
+// Lazy require: lets the app boot on a dev build that predates expo-device.
+function loadDeviceModel(): string | null {
+  try {
+    const Device = require('expo-device') as typeof import('expo-device');
+    return Device.modelName ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export type UserFeedbackType = 'bug_report' | 'feature_request' | 'contact_support';
 
@@ -24,7 +33,7 @@ export async function submitUserFeedback(input: UserFeedbackInput): Promise<void
     os: Platform.OS,
     osVersion: String(Platform.Version),
     appVersion: Constants.expoConfig?.version ?? null,
-    deviceModel: Device.modelName ?? null,
+    deviceModel: loadDeviceModel(),
   };
 
   const { error } = await supabase.from('user_feedback').insert({

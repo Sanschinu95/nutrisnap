@@ -6,9 +6,19 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as ImageManipulator from 'expo-image-manipulator';
 
 const STORAGE_PREFIX = 'profile_avatar';
+
+// Lazy require so the app boots even when running against a dev build that
+// predates the expo-image-manipulator native module. Avatar save no-ops in
+// that case (caller catches the throw and shows the existing initials).
+function loadImageManipulator(): typeof import('expo-image-manipulator') | null {
+  try {
+    return require('expo-image-manipulator') as typeof import('expo-image-manipulator');
+  } catch {
+    return null;
+  }
+}
 
 function keyFor(userId: string): string {
   return `${STORAGE_PREFIX}_${userId}`;
@@ -24,6 +34,10 @@ export async function loadAvatar(userId: string | null | undefined): Promise<str
 }
 
 export async function saveAvatarFromUri(userId: string, sourceUri: string): Promise<string> {
+  const ImageManipulator = loadImageManipulator();
+  if (!ImageManipulator) {
+    throw new Error('AVATAR_REBUILD_REQUIRED');
+  }
   const result = await ImageManipulator.manipulateAsync(
     sourceUri,
     [{ resize: { width: 200, height: 200 } }],

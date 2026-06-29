@@ -75,7 +75,12 @@ export default function ProfileScreen() {
       setAvatarUri(dataUri);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
-      console.warn('Avatar update failed:', err);
+      const msg = err instanceof Error ? err.message : '';
+      if (msg === 'AVATAR_REBUILD_REQUIRED') {
+        console.warn('Profile photo needs a fresh dev build (expo-image-manipulator missing)');
+      } else {
+        console.warn('Avatar update failed:', err);
+      }
     } finally {
       setAvatarBusy(false);
     }
