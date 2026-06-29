@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 import { Button } from '@/components/ui/Button';
 import { SkeletonCard } from '@/components/ui/SkeletonLoader';
 import { ThemedText } from '@/components/ui/ThemedText';
@@ -15,6 +16,7 @@ import { useUserStore } from '@/stores/user.store';
 import { exportAccountData, deleteAccountData } from '@/lib/accountData';
 import { BorderRadius, Colors, Spacing } from '@/constants/theme';
 import { formatVolume, formatWeight, unitLabel, type UnitPreference } from '@/lib/units';
+import { clearAvatar, loadAvatar, saveAvatarFromUri } from '@/lib/profileAvatar';
 
 type FeedbackType = 'Report Bug' | 'Feature Request' | null;
 
@@ -30,6 +32,66 @@ export default function ProfileScreen() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [showAvatarSheet, setShowAvatarSheet] = useState(false);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setAvatarUri(null);
+      return;
+    }
+    loadAvatar(user.id).then(setAvatarUri);
+  }, [user?.id]);
+
+  const pickAvatar = useCallback(async (source: 'camera' | 'library') => {
+    if (!user?.id) return;
+    setShowAvatarSheet(false);
+    setAvatarBusy(true);
+    try {
+      const permission =
+        source === 'camera'
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setAvatarBusy(false);
+        return;
+      }
+      const result =
+        source === 'camera'
+          ? await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 1 })
+          : await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 1,
+            });
+      if (result.canceled || !result.assets[0]?.uri) {
+        setAvatarBusy(false);
+        return;
+      }
+      const dataUri = await saveAvatarFromUri(user.id, result.assets[0].uri);
+      setAvatarUri(dataUri);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err) {
+      console.warn('Avatar update failed:', err);
+    } finally {
+      setAvatarBusy(false);
+    }
+  }, [user?.id]);
+
+  const removeAvatar = useCallback(async () => {
+    if (!user?.id) return;
+    setShowAvatarSheet(false);
+    setAvatarBusy(true);
+    try {
+      await clearAvatar(user.id);
+      setAvatarUri(null);
+      Haptics.selectionAsync();
+    } finally {
+      setAvatarBusy(false);
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     loadToday();
@@ -128,9 +190,26 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.header}>
-          <View style={styles.avatar}>
-            <ThemedText variant="h1" color="white">{initials}</ThemedText>
-          </View>
+          <Pressable
+            style={styles.avatar}
+            onPress={() => {
+              Haptics.selectionAsync();
+              setShowAvatarSheet(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Change profile photo"
+          >
+            {avatarUri ? (
+              <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+            ) : (
+              <ThemedText variant="h1" color="white">{initials}</ThemedText>
+            )}
+            {avatarBusy && (
+              <View style={styles.avatarBusyOverlay}>
+                <ActivityIndicator color={Colors.white} />
+              </View>
+            )}
+          </Pressable>
           <ThemedText variant="h1" align="center" style={styles.name}>
             {profile.name}
           </ThemedText>
@@ -257,6 +336,31 @@ export default function ProfileScreen() {
               <Button title="Cancel" variant="ghost" onPress={() => setFeedbackType(null)} style={styles.formButton} />
               <Button title="Submit" onPress={handleFeedbackSubmit} style={styles.formButton} />
             </View>
+          </View>
+        </View>
+      )}
+
+      {showAvatarSheet && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.sheetCard}>
+            <ThemedText variant="h3" style={styles.sheetTitle}>Profile photo</ThemedText>
+            <Pressable style={styles.sheetRow} onPress={() => pickAvatar('camera')}>
+              <Ionicons name="camera-outline" size={20} color={Colors.brown} />
+              <ThemedText variant="bodyMedium">Take photo</ThemedText>
+            </Pressable>
+            <Pressable style={styles.sheetRow} onPress={() => pickAvatar('library')}>
+              <Ionicons name="images-outline" size={20} color={Colors.brown} />
+              <ThemedText variant="bodyMedium">Choose from library</ThemedText>
+            </Pressable>
+            {avatarUri && (
+              <Pressable style={styles.sheetRow} onPress={removeAvatar}>
+                <Ionicons name="trash-outline" size={20} color={Colors.error} />
+                <ThemedText variant="bodyMedium" color={Colors.error}>Remove photo</ThemedText>
+              </Pressable>
+            )}
+            <Pressable style={styles.sheetCancel} onPress={() => setShowAvatarSheet(false)}>
+              <ThemedText variant="button" color={Colors.muted}>Cancel</ThemedText>
+            </Pressable>
           </View>
         </View>
       )}
@@ -407,6 +511,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.md,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarBusyOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  sheetTitle: {
+    marginBottom: Spacing.xs,
+  },
+  sheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    minHeight: 52,
+  },
+  sheetCancel: {
+    marginTop: Spacing.sm,
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
   },
   name: {
     fontSize: 34,

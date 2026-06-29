@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +16,9 @@ import { SkeletonCard } from '@/components/ui/SkeletonLoader';
 import { useTheme } from '@/hooks/useTheme';
 import { useWaterSound } from '@/hooks/useWaterSound';
 import { useUserStore } from '@/stores/user.store';
+import { useAuthStore } from '@/stores/auth.store';
 import { useDailyStore } from '@/stores/daily.store';
+import { loadAvatar } from '@/lib/profileAvatar';
 import { useAuthGate } from '@/hooks/useAuthGate';
 import { shouldShowFeedback } from '@/lib/feedback';
 import { BorderRadius, Colors, Shadows, Spacing } from '@/constants/theme';
@@ -59,8 +61,14 @@ const METRIC_CONFIG: Record<RingMetric, { label: string; color: string }> = {
 export default function HomeScreen() {
   const { theme } = useTheme();
   const { profile, calorieGoal, macroGoals, streak, hydrationGoalMl } = useUserStore();
+  const userId = useAuthStore((s) => s.user?.id ?? null);
   const { entries, summary, waterMl, addWater, removeEntry, loadToday } = useDailyStore();
   const { requireAuth } = useAuthGate();
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadAvatar(userId).then(setAvatarUri);
+  }, [userId]);
   const [selectedEntry, setSelectedEntry] = useState<FoodEntry | null>(null);
   const [chartMode, setChartMode] = useState<ChartMode>('spline');
   const [activeRingMetric, setActiveRingMetric] = useState<RingMetric>('calories');
@@ -230,9 +238,13 @@ export default function HomeScreen() {
             </ThemedText>
           </View>
           <Pressable style={styles.avatarButton} onPress={() => router.push('/(tabs)/profile')}>
-            <ThemedText variant="bodySemiBold" color="white">
-              {getInitials(profile.name)}
-            </ThemedText>
+            {avatarUri ? (
+              <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+            ) : (
+              <ThemedText variant="bodySemiBold" color="white">
+                {getInitials(profile.name)}
+              </ThemedText>
+            )}
           </Pressable>
         </Animated.View>
 
@@ -488,6 +500,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.olive,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
   },
   weekRow: {
     flexDirection: 'row',
