@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Dimensions, Image, Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Dimensions, Image, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -302,6 +302,12 @@ export default function ShareStoryScreen() {
   return <View style={s.screen}>
     <SafeAreaView style={s.safe}>
       <View style={s.header}><Pressable accessibilityLabel="Close" style={s.close} onPress={() => router.back()}><Ionicons name="close" size={25} color="#FFF" /></Pressable><View style={s.headerCopy}><Text style={s.title}>Share your day</Text><Text style={s.subtitle}>Choose how your route shows up.</Text></View><View style={{ width: 44 }} /></View>
+      <ScrollView
+        style={s.scroll}
+        contentContainerStyle={s.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
       <View style={s.tabs}>{([['route', 'Route Hero'], ['stats', 'Stats Card']] as const).map(([value, label]) => <Pressable key={value} style={[s.tab, template === value && s.tabActive]} onPress={() => { Haptics.selectionAsync(); setTemplate(value); setError(null); setEditing(false); Keyboard.dismiss(); }}><Text style={[s.tabText, template === value && s.tabTextActive]}>{label}</Text></Pressable>)}</View>
       <View style={s.preview}><Artwork template={template} data={data} width={PREVIEW_W} height={PREVIEW_H} note={note} backgroundUri={backgroundUri} /></View>
 
@@ -338,6 +344,7 @@ export default function ShareStoryScreen() {
 
       {error ? <View style={s.error}><Ionicons name="alert-circle-outline" size={18} color="#FFF" /><Text style={s.errorText}>{error}</Text><Pressable onPress={() => setError(null)}><Ionicons name="close" size={17} color="rgba(255,255,255,.7)" /></Pressable></View> : null}
       <View style={s.actions}><Pressable style={[s.shareButton, busy && s.disabled]} disabled={!!busy} onPress={share}><Ionicons name="share-outline" size={21} color="#0B090D" /><Text style={s.shareText}>{busy === 'share' ? 'Opening…' : 'Share'}</Text></Pressable><Pressable accessibilityLabel="Share to Instagram Stories" style={[s.igButton, busy && s.disabled]} disabled={!!busy} onPress={instagram}><Ionicons name="logo-instagram" size={22} color="#FFF" /><Text style={s.igText}>{busy === 'instagram' ? 'Opening…' : 'Story'}</Text></Pressable></View>
+      </ScrollView>
     </SafeAreaView>
     <View pointerEvents="none" style={s.captureStage}><ViewShot ref={storyRef} options={{ format: 'png', quality: 1, result: 'tmpfile' }} style={{ width: STORY_W, height: STORY_H }}><Artwork template={template} data={data} width={STORY_W} height={STORY_H} note={note} backgroundUri={backgroundUri} /></ViewShot><ViewShot ref={stickerRef} options={{ format: 'png', quality: 1, result: 'tmpfile' }} style={{ width: STICKER_W, height: stickerHeight, backgroundColor: 'transparent' }}><Sticker template={template} data={data} backgroundUri={backgroundUri} /></ViewShot></View>
   </View>;
@@ -345,6 +352,8 @@ export default function ShareStoryScreen() {
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#111014' }, safe: { flex: 1, paddingHorizontal: 20 }, header: { height: 70, flexDirection: 'row', alignItems: 'center' }, close: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,.1)' }, headerCopy: { flex: 1, alignItems: 'center' }, title: { color: '#FFF', fontFamily: Typography.fonts.headingBold, fontSize: 18 }, subtitle: { color: 'rgba(255,255,255,.55)', fontFamily: Typography.fonts.body, fontSize: 12, marginTop: 2 },
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: 32 },
   tabs: { alignSelf: 'center', width: PREVIEW_W, flexDirection: 'row', padding: 4, borderRadius: 14, backgroundColor: 'rgba(255,255,255,.08)', marginVertical: 8 }, tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 11 }, tabActive: { backgroundColor: '#FFF' }, tabText: { color: 'rgba(255,255,255,.62)', fontFamily: Typography.fonts.bodySemiBold, fontSize: 13 }, tabTextActive: { color: '#151219' },
   preview: { alignSelf: 'center', width: PREVIEW_W, height: PREVIEW_H, overflow: 'hidden', borderRadius: 18, marginTop: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,.12)' },
   noteRow: { alignSelf: 'center', width: PREVIEW_W, marginTop: 12, gap: 8 },
