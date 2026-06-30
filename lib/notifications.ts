@@ -286,6 +286,83 @@ export async function scheduleWaterReminders(): Promise<string[]> {
 // ─── Immediate / Event-based Notifications ──────────────────────
 
 /**
+ * Local 6pm reminder: "Your N-day streak. Log something to keep it alive."
+ * Cancels any previously-scheduled streak reminder before scheduling the
+ * next one. Skip when streak is 0 or already logged today.
+ */
+const STREAK_AT_RISK_ID = 'streak-at-risk-6pm';
+
+export async function scheduleStreakAtRiskReminder(streakCount: number): Promise<void> {
+  try {
+    await Notifications.cancelScheduledNotificationAsync(STREAK_AT_RISK_ID).catch(() => {});
+    if (streakCount < 3) return;
+    const now = new Date();
+    const target = new Date();
+    target.setHours(18, 0, 0, 0);
+    if (target.getTime() <= now.getTime()) target.setDate(target.getDate() + 1);
+    await Notifications.scheduleNotificationAsync({
+      identifier: STREAK_AT_RISK_ID,
+      content: {
+        title: `Your ${streakCount}-day streak`,
+        body: 'Log something to keep it alive. Even a snack counts.',
+        data: { type: 'streak_at_risk' },
+        ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.STREAK }),
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: target,
+      },
+    });
+  } catch (e) {
+    console.warn('Streak reminder scheduling failed:', e);
+  }
+}
+
+export async function cancelStreakAtRiskReminder(): Promise<void> {
+  try {
+    await Notifications.cancelScheduledNotificationAsync(STREAK_AT_RISK_ID);
+  } catch {
+    // Already canceled / never scheduled — ignore.
+  }
+}
+
+/**
+ * Morning "one more day" notification when the next milestone is exactly one
+ * day away. Caller dedupes per milestone.
+ */
+export async function sendMilestoneApproachingNotification(milestoneName: string): Promise<void> {
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'One more day',
+        body: `Log today and you hit ${milestoneName}.`,
+        data: { type: 'milestone_approaching', name: milestoneName },
+        ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.STREAK }),
+      },
+      trigger: null,
+    });
+  } catch (e) {
+    console.warn('Milestone notification failed:', e);
+  }
+}
+
+export async function sendGraceDayUsedNotification(): Promise<void> {
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Grace day used',
+        body: "Yesterday slipped by, but your streak's still alive. Log something today.",
+        data: { type: 'grace_day_used' },
+        ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.STREAK }),
+      },
+      trigger: null,
+    });
+  } catch (e) {
+    console.warn('Grace day notification failed:', e);
+  }
+}
+
+/**
  * Fire a notification when the user unlocks a treat day. Caller is
  * responsible for respecting the per-user `treat_day_notifications_enabled`
  * preference.

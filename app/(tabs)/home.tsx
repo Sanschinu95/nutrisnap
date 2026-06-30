@@ -30,6 +30,8 @@ import { useActivityStore } from '@/stores/activity.store';
 import { useTreatDayStore } from '@/stores/treatDay.store';
 import { TreatDayBanner } from '@/components/ui/TreatDayBanner';
 import { TreatDayCelebration } from '@/components/ui/TreatDayCelebration';
+import { StreakCard } from '@/components/ui/StreakCard';
+import { MilestoneCelebration } from '@/components/ui/MilestoneCelebration';
 import type { FoodEntry } from '@/types/nutrition';
 import { trackEvent } from '@/lib/telemetry';
 
@@ -290,6 +292,7 @@ export default function HomeScreen() {
         ]}
       />
       <TreatDayCelebration />
+      <MilestoneCelebration />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <Animated.View entering={FadeIn.duration(450)} style={styles.header}>
           <View style={styles.headerCopy}>
@@ -374,6 +377,7 @@ export default function HomeScreen() {
           <SleepMorningPrompt
             onEdit={() => useActivityStore.getState().requestOpenSleepSheet()}
           />
+          <StreakCard />
           <StepsSleepRow />
         </Animated.View>
 

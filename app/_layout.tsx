@@ -33,6 +33,7 @@ import { AuthGateModal } from '@/components/ui/AuthGateModal';
 import { useCoachStore } from '@/stores/coach.store';
 import { useActivityStore } from '@/stores/activity.store';
 import { useTreatDayStore } from '@/stores/treatDay.store';
+import { useStreakStore } from '@/stores/streak.store';
 import { initializeNotifications, scheduleWaterReminders, scheduleMealReminder, scheduleCoachWeeklyReview } from '@/lib/notifications';
 
 // Keep splash screen visible while we load resources
@@ -123,6 +124,8 @@ export default function RootLayout() {
         useActivityStore.getState().initialize(session.user.id);
         // Surface any unlocked/active treat day for the Home banner + overlay.
         useTreatDayStore.getState().loadTreatDayState(session.user.id);
+        // Load streaks (also applies grace-day catch-up on stale streaks).
+        useStreakStore.getState().loadStreak(session.user.id);
       }
       // Initialize notifications
       const granted = await initializeNotifications();

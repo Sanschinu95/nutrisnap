@@ -17,9 +17,6 @@ import {
   GOAL_MET_PROGRESS,
   GOAL_MISSED_PROGRESS,
 } from '@/constants/archetypeProgress';
-import { daysBetween, getActiveTreatDay, getLastUnlockTimestamp } from '@/lib/treatDay';
-import { useTreatDayStore } from './treatDay.store';
-import { sendTreatDayUnlockNotification } from '@/lib/notifications';
 
 interface OnboardingData {
   name: string;
@@ -311,50 +308,12 @@ export const useUserStore = create<UserStore>((set, get) => ({
     const { profile } = get();
     if (!profile) return;
 
-    const today = new Date().toISOString().split('T')[0];
-    const lastLogged = profile.last_logged_date;
-    let newStreak = profile.streak_count;
-
-    if (lastLogged === today) return;
-
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-    newStreak = lastLogged === yesterdayStr ? newStreak + 1 : 1;
-    const longestStreak = Math.max(newStreak, profile.longest_streak);
-
-    const updates = {
-      streak_count: newStreak,
-      longest_streak: longestStreak,
-      last_logged_date: today,
-    };
-
-    set({
-      streak: newStreak,
-      profile: { ...profile, ...updates },
-    });
-
-    // Persist to Supabase
+    // Delegate to the v2 streak store which owns milestones + grace logic and
+    // writes back into profile.streak_count for legacy displays. Inline-require
+    // dodges the cycle (streak.store imports user.store for setState).
     try {
-      await supabase
-        .from('profiles')
-        .update(updates)
-        .eq('id', profile.id);
-
-      await supabase
-        .from('streaks')
-        .upsert({
-          user_id: profile.id,
-          current_streak_count: newStreak,
-          last_logged_date: today,
-          grace_days_used_this_week: 0,
-        }, { onConflict: 'user_id' });
-
-      // Treat-day unlock check — fire-and-forget, never block the streak update.
-      maybeUnlockTreatDay(profile, newStreak, today).catch((err) => {
-        console.warn('Treat day unlock check failed:', err);
-      });
+      const mod = await import('./streak.store');
+      await mod.useStreakStore.getState().recordMealLogged(profile.id);
     } catch (error) {
       console.warn('Streak update failed:', error);
     }
@@ -409,36 +368,3 @@ export const useUserStore = create<UserStore>((set, get) => ({
   }),
 }));
 
-/* ─── Treat-day unlock hook ───────────────────────────────────── */
-
-const TREAT_DAY_THRESHOLD = 5;
-
-/**
- * Called after every successful streak bump. Unlocks a treat day when the
- * user has logged 5 consecutive days since the last unlock and doesn't
- * already have an unused one waiting.
- */
-async function maybeUnlockTreatDay(
-  profile: Profile,
-  newStreak: number,
-  today: string,
-): Promise<void> {
-  // Respect the master switch.
-  if (profile.treat_days_enabled === false) return;
-  // Guest mode doesn't sync to Supabase; nothing to unlock against.
-  if (profile.id.startsWith('guest_')) return;
-  if (newStreak < TREAT_DAY_THRESHOLD) return;
-
-  // Don't stack — bail if an unused treat day already exists.
-  const existing = await getActiveTreatDay(profile.id);
-  if (existing) return;
-
-  // Cooldown — at least 5 days must have passed since the last unlock.
-  const lastUnlockIso = await getLastUnlockTimestamp(profile.id);
-  if (lastUnlockIso && daysBetween(lastUnlockIso, today) < TREAT_DAY_THRESHOLD) return;
-
-  const row = await useTreatDayStore.getState().unlockNow(profile.id, 'streak_5', profile);
-  if (row && profile.treat_day_notifications_enabled !== false) {
-    sendTreatDayUnlockNotification();
-  }
-}

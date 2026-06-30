@@ -19,6 +19,8 @@ import { formatVolume, formatWeight, unitLabel, type UnitPreference } from '@/li
 import { clearAvatar, loadAvatar, saveAvatarFromUri } from '@/lib/profileAvatar';
 import { UserFeedbackForm } from '@/components/ui/UserFeedbackForm';
 import type { UserFeedbackType } from '@/lib/userFeedback';
+import { useStreakStore } from '@/stores/streak.store';
+import { trackEvent } from '@/lib/telemetry';
 
 type FeedbackType = UserFeedbackType | null;
 
@@ -36,6 +38,7 @@ export default function ProfileScreen() {
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [showAvatarSheet, setShowAvatarSheet] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const [showStreakReset, setShowStreakReset] = useState(false);
 
   useEffect(() => {
     if (!user?.id) {
@@ -289,6 +292,39 @@ export default function ProfileScreen() {
                 });
               }}
             />
+            <SettingsRow
+              title="Streak reminders"
+              icon="flame-outline"
+              trailing={profile.streak_reminders_enabled === false ? 'Off' : 'On'}
+              onPress={() => {
+                Haptics.selectionAsync();
+                updateProfile({
+                  streak_reminders_enabled: !(profile.streak_reminders_enabled !== false),
+                });
+              }}
+            />
+            <SettingsRow
+              title="Milestone notifications"
+              icon="trophy-outline"
+              trailing={profile.milestone_notifications_enabled === false ? 'Off' : 'On'}
+              onPress={() => {
+                Haptics.selectionAsync();
+                updateProfile({
+                  milestone_notifications_enabled: !(profile.milestone_notifications_enabled !== false),
+                });
+              }}
+            />
+            <SettingsRow
+              title="Reset my streak"
+              icon="refresh-outline"
+              trailing=""
+              iconColor={Colors.error}
+              labelColor={Colors.error}
+              onPress={() => {
+                Haptics.selectionAsync();
+                setShowStreakReset(true);
+              }}
+            />
           </View>
           <ThemedText variant="label" color={Colors.muted} style={{ paddingHorizontal: Spacing.base }}>
             Treat days unlock every 5 consecutive logged days. A planned, guilt-free way to enjoy
@@ -351,6 +387,42 @@ export default function ProfileScreen() {
             userId={user.id}
             onClose={() => setFeedbackType(null)}
           />
+        </View>
+      )}
+
+      {showStreakReset && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.deleteCard}>
+            <View style={[styles.deleteIconWrap, { backgroundColor: Colors.errorLight }]}>
+              <Ionicons name="refresh-outline" size={26} color={Colors.error} />
+            </View>
+            <ThemedText variant="h2" align="center" style={styles.deleteTitle}>
+              Reset your streak?
+            </ThemedText>
+            <ThemedText variant="body" color={Colors.muted} align="center" style={styles.deleteBody}>
+              This clears your current streak and unlocked milestones. Your longest streak stays on record. Use this if you want a fresh start.
+            </ThemedText>
+            <View style={styles.formActions}>
+              <Button
+                title="Cancel"
+                variant="ghost"
+                onPress={() => setShowStreakReset(false)}
+                style={styles.formButton}
+              />
+              <Pressable
+                style={styles.deleteConfirmButton}
+                onPress={async () => {
+                  if (!user?.id) return;
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                  await useStreakStore.getState().resetStreak(user.id);
+                  trackEvent('streak_reset');
+                  setShowStreakReset(false);
+                }}
+              >
+                <ThemedText variant="button" color={Colors.white}>Reset</ThemedText>
+              </Pressable>
+            </View>
+          </View>
         </View>
       )}
 

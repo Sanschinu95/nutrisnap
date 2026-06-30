@@ -36,7 +36,11 @@ export type AnalyticsEventName =
   | 'treat_day_celebration_dismissed'
   | 'treat_day_activated'
   | 'treat_day_suggestion_selected'
-  | 'treat_day_expired_unused';
+  | 'treat_day_expired_unused'
+  | 'streak_milestone_reached'
+  | 'streak_milestone_shared'
+  | 'streak_milestone_dismissed'
+  | 'streak_reset';
 
 interface QueuedEvent {
   event_name: AnalyticsEventName;

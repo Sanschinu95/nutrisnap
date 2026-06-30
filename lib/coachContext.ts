@@ -13,6 +13,7 @@ import { useDailyStore } from '../stores/daily.store';
 import { useUserStore } from '../stores/user.store';
 import { useAuthStore } from '../stores/auth.store';
 import { useTreatDayStore } from '../stores/treatDay.store';
+import { useStreakStore } from '../stores/streak.store';
 import { supabase } from './supabase';
 
 export interface DataInsight {
@@ -139,6 +140,21 @@ export async function buildCoachContext(): Promise<CoachContext> {
     ? JSON.stringify(profile.dietary_preferences)
     : 'none specified';
   const treatActiveToday = !!useTreatDayStore.getState().activeTreatDayToday;
+  const streakState = useStreakStore.getState();
+  const streakInfoBlock = `
+
+STREAK STATUS:
+- Current streak: ${streakState.currentStreak} day${streakState.currentStreak === 1 ? '' : 's'}
+- Longest streak: ${streakState.longestStreak} days
+- Grace days used in last 7 days: ${streakState.graceDaysUsed.filter((d) => {
+    const age = Math.floor((Date.now() - new Date(d).getTime()) / 86_400_000);
+    return age >= 0 && age <= 7;
+  }).length}
+- Milestones unlocked: ${
+    streakState.milestonesReached.length === 0
+      ? 'none yet'
+      : streakState.milestonesReached.map((m) => `${m.days} days`).join(', ')
+  }`;
 
   const treatDayBlock = treatActiveToday
     ? `
@@ -151,7 +167,7 @@ SPECIAL CONTEXT: Today is the user's TREAT DAY. They've earned this by being con
 - Tomorrow is a normal day; you can mention "we're back to routine tomorrow" if natural.`
     : '';
 
-  const systemPrompt = `You are a personal nutrition coach inside NutriSnap, a calm premium nutrition tracking app. You are talking to ${displayName}.${treatDayBlock}
+  const systemPrompt = `You are a personal nutrition coach inside NutriSnap, a calm premium nutrition tracking app. You are talking to ${displayName}.${treatDayBlock}${streakInfoBlock}
 
 PERSONALITY:
 - Warm, encouraging, knowledgeable. Like a friend who happens to know nutrition well.

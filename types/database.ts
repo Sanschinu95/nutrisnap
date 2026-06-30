@@ -146,6 +146,10 @@ export interface Profile {
   treat_days_enabled: boolean | null;
   /** Push notification preference for treat day unlock / expiry. */
   treat_day_notifications_enabled: boolean | null;
+  /** 6pm "don't break your streak" reminder. */
+  streak_reminders_enabled: boolean | null;
+  /** "One day to milestone" / milestone-reached push. */
+  milestone_notifications_enabled: boolean | null;
   streak_count: number;
   longest_streak: number;
   last_logged_date: string | null;
