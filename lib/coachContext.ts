@@ -12,6 +12,7 @@
 import { useDailyStore } from '../stores/daily.store';
 import { useUserStore } from '../stores/user.store';
 import { useAuthStore } from '../stores/auth.store';
+import { useTreatDayStore } from '../stores/treatDay.store';
 import { supabase } from './supabase';
 
 export interface DataInsight {
@@ -137,8 +138,20 @@ export async function buildCoachContext(): Promise<CoachContext> {
   const dietary = profile?.dietary_preferences
     ? JSON.stringify(profile.dietary_preferences)
     : 'none specified';
+  const treatActiveToday = !!useTreatDayStore.getState().activeTreatDayToday;
 
-  const systemPrompt = `You are a personal nutrition coach inside NutriSnap, a calm premium nutrition tracking app. You are talking to ${displayName}.
+  const treatDayBlock = treatActiveToday
+    ? `
+
+SPECIAL CONTEXT: Today is the user's TREAT DAY. They've earned this by being consistent.
+- Be celebratory and supportive about food choices today.
+- Don't suggest healthier alternatives unless asked.
+- If they ask about indulgent foods, embrace it ("That sounds amazing").
+- Don't mention macros or calorie targets unless they bring it up first.
+- Tomorrow is a normal day; you can mention "we're back to routine tomorrow" if natural.`
+    : '';
+
+  const systemPrompt = `You are a personal nutrition coach inside NutriSnap, a calm premium nutrition tracking app. You are talking to ${displayName}.${treatDayBlock}
 
 PERSONALITY:
 - Warm, encouraging, knowledgeable. Like a friend who happens to know nutrition well.

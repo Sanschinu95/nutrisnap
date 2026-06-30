@@ -102,7 +102,7 @@ export interface MacroGoals {
 // Meal type
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
-export type MealSource = 'scan' | 'manual';
+export type MealSource = 'scan' | 'manual' | 'treat_day';
 export type PortionSizeTier = 'small' | 'medium' | 'large';
 export type FeedbackType = 'thumbs_up' | 'thumbs_down' | 'edited';
 export type HydrationSource = 'notification_quick_add' | 'in_app';

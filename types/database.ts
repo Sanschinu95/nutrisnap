@@ -142,6 +142,10 @@ export interface Profile {
   regular_wake_time: string | null;
   /** Desired hours of sleep per night. */
   sleep_goal_hours: number | null;
+  /** Treat-day reward mechanic master switch. */
+  treat_days_enabled: boolean | null;
+  /** Push notification preference for treat day unlock / expiry. */
+  treat_day_notifications_enabled: boolean | null;
   streak_count: number;
   longest_streak: number;
   last_logged_date: string | null;

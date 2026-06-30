@@ -11,6 +11,7 @@ import { useDailyStore } from './daily.store';
 import { useCoachStore } from './coach.store';
 import { useUserStore } from './user.store';
 import { useActivityStore } from './activity.store';
+import { useTreatDayStore } from './treatDay.store';
 
 type PendingAction = () => Promise<void>;
 
@@ -97,6 +98,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           useUserStore.getState().reset();
           useCoachStore.getState().resetAll();
           useActivityStore.getState().reset();
+          useTreatDayStore.getState().reset();
           return;
         }
 
@@ -105,6 +107,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           useUserStore.getState().reset();
           useCoachStore.getState().resetAll();
           useActivityStore.getState().reset();
+          useTreatDayStore.getState().reset();
           // Re-load for new user.
           useCoachStore.getState().loadPersistedState(nextUserId);
           useUserStore.getState().loadProfile();

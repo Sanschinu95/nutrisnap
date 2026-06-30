@@ -39,7 +39,7 @@ export interface RouteDataPoint {
   calories: number;
   mealId: string;
   thumbnailUrl?: string;
-  source?: 'scan' | 'manual';
+  source?: 'scan' | 'manual' | 'treat_day';
 }
 
 export type ChartMode = 'spline' | 'bar' | 'dual-line';

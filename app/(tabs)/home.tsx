@@ -27,6 +27,9 @@ import { PinnedInsight } from '@/components/ui/PinnedInsight';
 import { StepsSleepRow } from '@/components/ui/StepsSleepRow';
 import { SleepMorningPrompt } from '@/components/ui/SleepMorningPrompt';
 import { useActivityStore } from '@/stores/activity.store';
+import { useTreatDayStore } from '@/stores/treatDay.store';
+import { TreatDayBanner } from '@/components/ui/TreatDayBanner';
+import { TreatDayCelebration } from '@/components/ui/TreatDayCelebration';
 import type { FoodEntry } from '@/types/nutrition';
 import { trackEvent } from '@/lib/telemetry';
 
@@ -163,6 +166,8 @@ export default function HomeScreen() {
   const hydrationGoalDisplay = formatVolume(hydrationGoalMl, unitPref);
   const quickAddMl = getWaterQuickAdds(unitPref)[0].ml;
   const userName = profile?.name?.split(' ')[0] ?? 'there';
+  const treatActiveToday = useTreatDayStore((s) => s.activeTreatDayToday);
+  const treatAvailable = useTreatDayStore((s) => s.availableTreatDay);
   const todaySteps = useActivityStore((s) => s.todaySteps);
   const stepGoal = useActivityStore((s) => s.stepGoal);
   const lastNightSleep = useActivityStore((s) => s.lastNightSleep);
@@ -272,8 +277,11 @@ export default function HomeScreen() {
     );
   }
 
+  // Treat day active today shifts the entire surface into a warmer cream.
+  const surfaceBg = treatActiveToday ? '#FAF3E8' : theme.background;
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: surfaceBg }]}>
       <Animated.View
         pointerEvents="none"
         style={[
@@ -281,6 +289,7 @@ export default function HomeScreen() {
           { backgroundColor: Colors.blue, opacity: hydrationProgress * 0.1 },
         ]}
       />
+      <TreatDayCelebration />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <Animated.View entering={FadeIn.duration(450)} style={styles.header}>
           <View style={styles.headerCopy}>
@@ -301,6 +310,12 @@ export default function HomeScreen() {
             )}
           </Pressable>
         </Animated.View>
+
+        {(treatAvailable || treatActiveToday) && (
+          <View style={styles.treatSlot}>
+            <TreatDayBanner />
+          </View>
+        )}
 
         <Animated.View entering={FadeInDown.delay(80).springify()} style={styles.weekRow}>
           {Array.from({ length: 7 }).map((_, index) => {
@@ -324,7 +339,7 @@ export default function HomeScreen() {
               progress={activeData.progress}
               centerLabel={activeConfig.label}
               centerValue={activeData.value}
-              ringColor={activeConfig.color}
+              ringColor={treatActiveToday ? '#D97706' : activeConfig.color}
               strokeWidth={16}
             />
             <View style={styles.macroLegend}>
@@ -648,6 +663,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     marginTop: Spacing.lg,
     gap: Spacing.md,
+  },
+  treatSlot: {
+    paddingHorizontal: Spacing.xl,
+    marginBottom: Spacing.md,
   },
   pinnedInsightSlot: {
     paddingHorizontal: Spacing.xl,

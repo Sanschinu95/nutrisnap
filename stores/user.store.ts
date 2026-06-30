@@ -17,6 +17,9 @@ import {
   GOAL_MET_PROGRESS,
   GOAL_MISSED_PROGRESS,
 } from '@/constants/archetypeProgress';
+import { daysBetween, getActiveTreatDay, getLastUnlockTimestamp } from '@/lib/treatDay';
+import { useTreatDayStore } from './treatDay.store';
+import { sendTreatDayUnlockNotification } from '@/lib/notifications';
 
 interface OnboardingData {
   name: string;
@@ -347,6 +350,11 @@ export const useUserStore = create<UserStore>((set, get) => ({
           last_logged_date: today,
           grace_days_used_this_week: 0,
         }, { onConflict: 'user_id' });
+
+      // Treat-day unlock check — fire-and-forget, never block the streak update.
+      maybeUnlockTreatDay(profile, newStreak, today).catch((err) => {
+        console.warn('Treat day unlock check failed:', err);
+      });
     } catch (error) {
       console.warn('Streak update failed:', error);
     }
@@ -400,3 +408,37 @@ export const useUserStore = create<UserStore>((set, get) => ({
     error: null,
   }),
 }));
+
+/* ─── Treat-day unlock hook ───────────────────────────────────── */
+
+const TREAT_DAY_THRESHOLD = 5;
+
+/**
+ * Called after every successful streak bump. Unlocks a treat day when the
+ * user has logged 5 consecutive days since the last unlock and doesn't
+ * already have an unused one waiting.
+ */
+async function maybeUnlockTreatDay(
+  profile: Profile,
+  newStreak: number,
+  today: string,
+): Promise<void> {
+  // Respect the master switch.
+  if (profile.treat_days_enabled === false) return;
+  // Guest mode doesn't sync to Supabase; nothing to unlock against.
+  if (profile.id.startsWith('guest_')) return;
+  if (newStreak < TREAT_DAY_THRESHOLD) return;
+
+  // Don't stack — bail if an unused treat day already exists.
+  const existing = await getActiveTreatDay(profile.id);
+  if (existing) return;
+
+  // Cooldown — at least 5 days must have passed since the last unlock.
+  const lastUnlockIso = await getLastUnlockTimestamp(profile.id);
+  if (lastUnlockIso && daysBetween(lastUnlockIso, today) < TREAT_DAY_THRESHOLD) return;
+
+  const row = await useTreatDayStore.getState().unlockNow(profile.id, 'streak_5', profile);
+  if (row && profile.treat_day_notifications_enabled !== false) {
+    sendTreatDayUnlockNotification();
+  }
+}

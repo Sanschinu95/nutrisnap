@@ -286,6 +286,29 @@ export async function scheduleWaterReminders(): Promise<string[]> {
 // ─── Immediate / Event-based Notifications ──────────────────────
 
 /**
+ * Fire a notification when the user unlocks a treat day. Caller is
+ * responsible for respecting the per-user `treat_day_notifications_enabled`
+ * preference.
+ */
+export async function sendTreatDayUnlockNotification(): Promise<void> {
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "You've earned a treat day",
+        body: '5 days of consistency. Open NutriSnap to see your suggestions.',
+        data: { type: 'treat_day_unlocked' },
+        ...(Platform.OS === 'android' && {
+          channelId: NOTIFICATION_CHANNELS.GOAL_HIT,
+        }),
+      },
+      trigger: null,
+    });
+  } catch (e) {
+    console.warn('Treat day notification failed:', e);
+  }
+}
+
+/**
  * Fire a notification when user hits their daily calorie goal.
  */
 export async function sendGoalHitNotification(archetype?: ArchetypeKey | null): Promise<void> {

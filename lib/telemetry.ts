@@ -31,7 +31,12 @@ export type AnalyticsEventName =
   | 'coach_conversation_resumed'
   | 'coach_conversation_dismissed'
   | 'manual_entry_ai_fill'
-  | 'feedback_submitted';
+  | 'feedback_submitted'
+  | 'treat_day_unlocked'
+  | 'treat_day_celebration_dismissed'
+  | 'treat_day_activated'
+  | 'treat_day_suggestion_selected'
+  | 'treat_day_expired_unused';
 
 interface QueuedEvent {
   event_name: AnalyticsEventName;

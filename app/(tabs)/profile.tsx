@@ -269,7 +269,31 @@ export default function ProfileScreen() {
               trailing={unitLabel(unitPref)}
               onPress={handleToggleUnits}
             />
+            <SettingsRow
+              title="Treat days"
+              icon="gift-outline"
+              trailing={profile.treat_days_enabled === false ? 'Off' : 'On'}
+              onPress={() => {
+                Haptics.selectionAsync();
+                updateProfile({ treat_days_enabled: !(profile.treat_days_enabled !== false) });
+              }}
+            />
+            <SettingsRow
+              title="Treat day notifications"
+              icon="notifications-circle-outline"
+              trailing={profile.treat_day_notifications_enabled === false ? 'Off' : 'On'}
+              onPress={() => {
+                Haptics.selectionAsync();
+                updateProfile({
+                  treat_day_notifications_enabled: !(profile.treat_day_notifications_enabled !== false),
+                });
+              }}
+            />
           </View>
+          <ThemedText variant="label" color={Colors.muted} style={{ paddingHorizontal: Spacing.base }}>
+            Treat days unlock every 5 consecutive logged days. A planned, guilt-free way to enjoy
+            indulgent food while staying consistent.
+          </ThemedText>
         </View>
 
         <View style={styles.section}>

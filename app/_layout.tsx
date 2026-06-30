@@ -32,6 +32,7 @@ import { useUserStore } from '@/stores/user.store';
 import { AuthGateModal } from '@/components/ui/AuthGateModal';
 import { useCoachStore } from '@/stores/coach.store';
 import { useActivityStore } from '@/stores/activity.store';
+import { useTreatDayStore } from '@/stores/treatDay.store';
 import { initializeNotifications, scheduleWaterReminders, scheduleMealReminder, scheduleCoachWeeklyReview } from '@/lib/notifications';
 
 // Keep splash screen visible while we load resources
@@ -120,6 +121,8 @@ export default function RootLayout() {
         await loadProfile();
         // Kick off step/sleep tracking (lazy: pedometer module is optional).
         useActivityStore.getState().initialize(session.user.id);
+        // Surface any unlocked/active treat day for the Home banner + overlay.
+        useTreatDayStore.getState().loadTreatDayState(session.user.id);
       }
       // Initialize notifications
       const granted = await initializeNotifications();
@@ -153,6 +156,7 @@ export default function RootLayout() {
       if (!userId) return;
       useActivityStore.getState().checkSleepPromptStatus(userId);
       useActivityStore.getState().refreshSteps();
+      useTreatDayStore.getState().loadTreatDayState(userId);
     });
     return () => sub.remove();
   }, []);
