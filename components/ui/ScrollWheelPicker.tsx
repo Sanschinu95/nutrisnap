@@ -45,6 +45,10 @@ interface ScrollWheelPickerProps {
   itemHeight?: number;
   /** Must be odd. Defaults to 5 (2 above + center + 2 below). */
   visibleItems?: number;
+  /**
+   * Optional unit label. Rendered as a small caption ABOVE the picker so it
+   * never overlaps a multi-digit center value (e.g. "10" in the inches wheel).
+   */
   unit?: string;
 }
 
@@ -166,7 +170,13 @@ export function ScrollWheelPicker({
   };
 
   return (
-    <View style={[styles.container, { height: pickerHeight }]}>
+    <View style={styles.wrapper}>
+      {unit && (
+        <ThemedText style={styles.unitCaption} accessibilityRole="text">
+          {unit}
+        </ThemedText>
+      )}
+      <View style={[styles.container, { height: pickerHeight }]}>
       <View pointerEvents="none" style={[styles.dividerTop, { top: padCount * itemHeight }]} />
       <View
         pointerEvents="none"
@@ -234,11 +244,7 @@ export function ScrollWheelPicker({
         />
       )}
 
-      {unit && (
-        <View pointerEvents="none" style={[styles.unitLabel, { top: padCount * itemHeight + itemHeight / 2 - 10 }]}>
-          <ThemedText style={{ fontSize: 13, color: TEXT_SECONDARY }}>{unit}</ThemedText>
-        </View>
-      )}
+      </View>
     </View>
   );
 }
@@ -282,12 +288,17 @@ const Row = React.memo(
     return (
       <View style={[styles.row, { height: itemHeight }]}>
         <ThemedText
+          numberOfLines={1}
+          adjustsFontSizeToFit
           style={{
             fontSize: size,
+            lineHeight: size + 4,
             fontFamily: Typography.fonts.headingBold,
             color,
             opacity,
             textAlign: 'center',
+            includeFontPadding: false,
+            paddingHorizontal: 4,
           }}
         >
           {formatValue(item, step)}
@@ -317,12 +328,21 @@ function formatValue(v: number, step: number): string {
 }
 
 const styles = StyleSheet.create({
+  wrapper: { width: '100%', alignItems: 'stretch' },
+  unitCaption: {
+    fontSize: 12,
+    color: TEXT_SECONDARY,
+    textAlign: 'center',
+    marginBottom: 6,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
   container: {
     width: '100%',
     position: 'relative',
     overflow: 'hidden',
   },
-  listContent: { paddingHorizontal: 24 },
+  listContent: { paddingHorizontal: 12 },
   row: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -367,15 +387,11 @@ const styles = StyleSheet.create({
   },
   centerTap: {
     position: 'absolute',
-    left: 60,
-    right: 60,
+    left: 24,
+    right: 24,
   },
   editOverlay: {
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  unitLabel: {
-    position: 'absolute',
-    right: 36,
   },
 });

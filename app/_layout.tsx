@@ -6,7 +6,13 @@
 import { useEffect, useState } from 'react';
 import { Stack, router, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { AppState, View, StyleSheet } from 'react-native';
+import { AppState, LogBox, View, StyleSheet } from 'react-native';
+
+// Our onboarding wheel pickers deliberately nest a vertical FlatList inside a
+// vertical ScrollView with `nestedScrollEnabled` on both. The framework's
+// warning about this pattern is intended for accidental nesting, not the
+// controlled setup we have, so suppress it in dev.
+LogBox.ignoreLogs(['VirtualizedLists should never be nested']);
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { FadeIn, FadeOut, ZoomIn } from 'react-native-reanimated';
@@ -148,12 +154,16 @@ export default function RootLayout() {
     prepare();
   }, [initialize, loadProfile]);
 
+  // Wait for BOTH fonts and auth-init before dismissing the splash. Otherwise
+  // a signed-in user briefly sees the Welcome (Get Started / Log In) screen
+  // for the ~1s that auth resolution takes on cold start.
+  const isAuthInitialized = useAuthStore((s) => s.isInitialized);
   useEffect(() => {
-    if (fontsLoaded || fontError) {
+    if ((fontsLoaded || fontError) && isAuthInitialized) {
       setAppIsReady(true);
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded, fontError]);
+  }, [fontsLoaded, fontError, isAuthInitialized]);
 
   // Re-check the morning sleep prompt and refresh today's step total whenever
   // the user brings the app back to the foreground (covers "opened at 6am,

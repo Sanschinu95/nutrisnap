@@ -153,18 +153,50 @@ export const useUserStore = create<UserStore>((set, get) => ({
         .eq('id', user.id)
         .single();
 
-      if (error || !data) {
-        // No profile yet (new user)
-        set({ isLoading: false, profile: null });
+      if (data && !error) {
+        const profile = data as Profile;
+        set({
+          profile,
+          ...extractGoals(profile),
+          isLoading: false,
+          isGuest: false,
+        });
         return;
       }
 
-      const profile = data as Profile;
-      set({
-        profile,
-        ...extractGoals(profile),
-        isLoading: false,
-      });
+      // No Supabase profile row for this authenticated user yet. Before
+      // clearing local state (which would force re-onboarding), check whether
+      // the current local state is a completed guest profile — if so, port it
+      // to this new user id so their answers survive the sign-in.
+      const existing = get().profile;
+      const isCompletedGuest =
+        existing?.onboarding_complete === true &&
+        typeof existing?.id === 'string' &&
+        existing.id.startsWith('guest_');
+
+      if (isCompletedGuest && existing) {
+        const migratedProfile: Profile = {
+          ...existing,
+          id: user.id,
+          updated_at: new Date().toISOString(),
+        };
+        const { error: upsertError } = await supabase
+          .from('profiles')
+          .upsert(migratedProfile, { onConflict: 'id' });
+        if (upsertError) {
+          console.warn('Guest → auth profile migration failed:', upsertError.message);
+        }
+        set({
+          profile: migratedProfile,
+          ...extractGoals(migratedProfile),
+          isLoading: false,
+          isGuest: false,
+        });
+        return;
+      }
+
+      // Truly new user — no local answers to preserve.
+      set({ isLoading: false, profile: null, isGuest: false });
     } catch (error) {
       console.error('Load profile error:', error);
       set({ isLoading: false });
