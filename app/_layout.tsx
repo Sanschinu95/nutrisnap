@@ -190,7 +190,6 @@ export default function RootLayout() {
         <Stack.Screen name="auth/index" />
 
         <Stack.Screen name="onboarding/index" />
-        <Stack.Screen name="onboarding/diet" />
         <Stack.Screen name="onboarding/transition" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen
