@@ -60,7 +60,13 @@ function useProtectedRoute() {
       segment0 === 'share-story' ||
       segment0 === 'confirm' ||
       segment0 === 'legal' ||
-      segment0 === 'coach';
+      segment0 === 'coach' ||
+      segment0 === 'scan-tutorial' ||
+      segment0 === 'sleep-detail' ||
+      segment0 === 'steps-detail' ||
+      segment0 === 'streak-detail' ||
+      segment0 === 'treat-day' ||
+      segment0 === 'milestone-share';
     const isWelcome = !inAuthGroup && !inOnboarding && !inFutureYou && !inTabs && !inAppScreen;
 
     const hasCompletedOnboarding = profile?.onboarding_complete === true;
@@ -192,6 +198,7 @@ export default function RootLayout() {
         <Stack.Screen name="onboarding/index" />
         <Stack.Screen name="onboarding/transition" />
         <Stack.Screen name="sleep-detail" />
+        <Stack.Screen name="steps-detail" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen
           name="future-you"

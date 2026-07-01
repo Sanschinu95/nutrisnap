@@ -332,8 +332,7 @@ const styles = StyleSheet.create({
   stepLabel: { fontSize: 12, color: TEXT_MUTED },
   headline: {
     fontSize: 26,
-    fontFamily: Typography.fonts.serif,
-    fontWeight: '500',
+    fontFamily: Typography.fonts.headingBold,
     color: TEXT_PRIMARY,
     textAlign: 'center',
     lineHeight: 32,
