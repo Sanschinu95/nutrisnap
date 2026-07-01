@@ -19,7 +19,7 @@ import { ThemedText } from '@/components/ui/ThemedText';
 import { useTheme } from '@/hooks/useTheme';
 import { useGroq } from '@/hooks/useGroq';
 import { useDailyStore } from '@/stores/daily.store';
-import { useUserStore } from '@/stores/user.store';
+import { hasSeenScanTutorialInSession, useUserStore } from '@/stores/user.store';
 import { BorderRadius, Colors, Spacing } from '@/constants/theme';
 import { trackEvent } from '@/lib/telemetry';
 import { useChartSound } from '@/hooks/useChartSound';
@@ -48,13 +48,13 @@ export default function CameraScreen() {
     loadToday();
   }, [loadToday]);
 
-  // First-time scan tutorial: if the user has never seen it, push the
-  // tutorial screen over the camera. Using `push` (not `replace`) so the
-  // Scan tab stays mounted underneath — otherwise, when the tutorial calls
-  // router.replace back to the tab, the tab's useFocusEffect refires and
-  // the tutorial flashes for a split second before the flag write commits.
+  // First-time scan tutorial: push the tutorial over the camera when the
+  // user hasn't seen it. The session-scoped flag guards against a re-push
+  // loop that would happen if the profile refetch hasn't landed by the
+  // time the tutorial pops back to this tab.
   useFocusEffect(
     useCallback(() => {
+      if (hasSeenScanTutorialInSession()) return;
       const seen = useUserStore.getState().profile?.has_seen_scan_tutorial;
       if (seen !== true) {
         router.push('/scan-tutorial' as any);

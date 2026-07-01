@@ -22,7 +22,7 @@ import * as Haptics from 'expo-haptics';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { ThemedText } from '@/components/ui/ThemedText';
 import { useAuthStore } from '@/stores/auth.store';
-import { useUserStore } from '@/stores/user.store';
+import { setScanTutorialSeenInSession, useUserStore } from '@/stores/user.store';
 import { Typography } from '@/constants/theme';
 
 const PRIMARY_GREEN = '#22C55E';
@@ -92,11 +92,14 @@ export default function ScanTutorialScreen() {
 
   const finish = useCallback(async () => {
     Haptics.selectionAsync();
-    if (userId) {
-      // Fire-and-forget so we never block the transition to the camera.
-      markSeen(userId).catch((err) => console.warn('markScanTutorialSeen threw:', err));
-    }
-    // Pop back to the Scan tab; the tutorial was pushed, not replaced.
+    // Session-level flag so the Scan tab's useFocusEffect skips a re-push
+    // even if the Supabase write hasn't landed or userId is momentarily null.
+    setScanTutorialSeenInSession();
+    // Always update local Zustand state (works for guests too). Supabase
+    // write inside is skipped when userId is null.
+    markSeen(userId ?? '').catch((err) =>
+      console.warn('markScanTutorialSeen threw:', err),
+    );
     if (router.canGoBack()) router.back();
     else router.replace('/(tabs)/camera' as any);
   }, [userId, markSeen]);

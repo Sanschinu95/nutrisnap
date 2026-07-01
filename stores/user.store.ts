@@ -358,6 +358,8 @@ export const useUserStore = create<UserStore>((set, get) => ({
     if (profile) {
       set({ profile: { ...profile, has_seen_scan_tutorial: true } });
     }
+    // Skip the DB write for guests / unauthenticated sessions.
+    if (!userId || userId.startsWith('guest_')) return;
     const { error } = await supabase
       .from('profiles')
       .update({ has_seen_scan_tutorial: true })
@@ -370,6 +372,8 @@ export const useUserStore = create<UserStore>((set, get) => ({
     if (profile) {
       set({ profile: { ...profile, has_seen_scan_tutorial: false } });
     }
+    clearScanTutorialSessionFlag();
+    if (!userId || userId.startsWith('guest_')) return;
     const { error } = await supabase
       .from('profiles')
       .update({ has_seen_scan_tutorial: false })
@@ -393,4 +397,26 @@ export const useUserStore = create<UserStore>((set, get) => ({
     error: null,
   }),
 }));
+
+/* ─── Scan-tutorial session flag ───────────────────────────────
+ *
+ * A module-level flag the Scan-tab focus guard reads first. It survives
+ * across camera <-> tutorial transitions in the same JS instance without
+ * depending on Zustand rehydration or Supabase round-trips. Reset when
+ * the user pulls "Show scan tips again" from Settings.
+ */
+
+let scanTutorialSeenInSession = false;
+
+export function setScanTutorialSeenInSession(): void {
+  scanTutorialSeenInSession = true;
+}
+
+export function hasSeenScanTutorialInSession(): boolean {
+  return scanTutorialSeenInSession;
+}
+
+function clearScanTutorialSessionFlag(): void {
+  scanTutorialSeenInSession = false;
+}
 

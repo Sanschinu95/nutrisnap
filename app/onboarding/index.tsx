@@ -226,6 +226,8 @@ export default function OnboardingScreen() {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          // Let the nested picker FlatList consume the pan on Android.
+          nestedScrollEnabled
         >
           <Animated.View key={step} entering={FadeInDown.duration(220)}>
             {step === 0 && (
