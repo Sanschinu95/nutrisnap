@@ -191,6 +191,7 @@ export default function RootLayout() {
 
         <Stack.Screen name="onboarding/index" />
         <Stack.Screen name="onboarding/transition" />
+        <Stack.Screen name="sleep-detail" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen
           name="future-you"

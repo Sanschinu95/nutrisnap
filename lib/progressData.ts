@@ -12,6 +12,8 @@ export interface WeeklyDay {
   protein: number;
   waterMl: number;
   mealCount: number;
+  /** Nightly sleep, in minutes. 0 when not logged. */
+  sleepMinutes: number;
   isFuture: boolean;
 }
 
@@ -20,6 +22,7 @@ export interface WeeklyData {
   avgCalories: number;
   avgProtein: number;
   avgWaterMl: number;
+  avgSleepMinutes: number;
   activeDays: number;
 }
 
@@ -125,15 +128,17 @@ export async function loadWeeklyData(userId: string): Promise<WeeklyData> {
       protein: 0,
       waterMl: 0,
       mealCount: 0,
+      sleepMinutes: 0,
       isFuture: key > todayKey,
     };
   });
 
   const byDate = new Map<string, WeeklyDay>(days.map((d) => [d.date, d]));
 
-  const [meals, hydration] = await Promise.all([
+  const [meals, hydration, sleep] = await Promise.all([
     fetchMealsInRange(userId, monday, sunday),
     fetchHydrationInRange(userId, monday, sunday),
+    fetchSleepInRange(userId, toDateKey(monday), toDateKey(sunday)),
   ]);
 
   for (const m of meals) {
@@ -150,17 +155,49 @@ export async function loadWeeklyData(userId: string): Promise<WeeklyData> {
     if (!entry) continue;
     entry.waterMl += h.amount_ml ?? 0;
   }
+  for (const s of sleep) {
+    const entry = byDate.get(s.date);
+    if (!entry) continue;
+    entry.sleepMinutes = s.duration_minutes;
+  }
 
   const realised = days.filter((d) => !d.isFuture && (d.calories > 0 || d.waterMl > 0 || d.mealCount > 0));
   const activeDays = realised.length;
   const safeAvg = (sum: number) => (activeDays > 0 ? sum / activeDays : 0);
+
+  const sleptNights = days.filter((d) => !d.isFuture && d.sleepMinutes > 0);
+  const avgSleepMinutes = sleptNights.length
+    ? Math.round(sleptNights.reduce((s, d) => s + d.sleepMinutes, 0) / sleptNights.length)
+    : 0;
+
   return {
     days,
     avgCalories: Math.round(safeAvg(realised.reduce((s, d) => s + d.calories, 0))),
     avgProtein: Math.round(safeAvg(realised.reduce((s, d) => s + d.protein, 0))),
     avgWaterMl: Math.round(safeAvg(realised.reduce((s, d) => s + d.waterMl, 0))),
+    avgSleepMinutes,
     activeDays,
   };
+}
+
+interface SleepAggRow {
+  date: string;
+  duration_minutes: number;
+}
+
+async function fetchSleepInRange(
+  userId: string,
+  startDate: string,
+  endDate: string,
+): Promise<SleepAggRow[]> {
+  const { data, error } = await supabase
+    .from('sleep_logs')
+    .select('date, duration_minutes')
+    .eq('user_id', userId)
+    .gte('date', startDate)
+    .lte('date', endDate);
+  if (error) return [];
+  return (data ?? []) as SleepAggRow[];
 }
 
 export async function loadMonthlyData(userId: string): Promise<MonthlyData> {

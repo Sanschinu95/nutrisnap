@@ -106,8 +106,9 @@ export default function ScanTutorialScreen() {
       // Fire-and-forget so we never block the transition to the camera.
       markSeen(userId).catch((err) => console.warn('markScanTutorialSeen threw:', err));
     }
-    // Replace (not push) so the tutorial isn't in the back stack.
-    router.replace('/(tabs)/camera' as any);
+    // Pop back to the Scan tab; the tutorial was pushed, not replaced.
+    if (router.canGoBack()) router.back();
+    else router.replace('/(tabs)/camera' as any);
   }, [userId, markSeen]);
 
   const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {

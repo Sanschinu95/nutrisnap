@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import BottomSheet, { BottomSheetView } from '@gorhom/bottom-sheet';
@@ -36,11 +37,10 @@ export function StepsSleepRow() {
   const stepsRef = useRef<BottomSheet>(null);
   const sleepRef = useRef<BottomSheet>(null);
 
-  // External trigger (morning prompt's "Edit") to open the sleep sheet.
+  // External trigger (morning prompt's "Edit") to open the full-screen sleep detail.
   useEffect(() => {
     if (sleepSheetOpenRequest > 0) {
-      setShowSleep(true);
-      requestAnimationFrame(() => sleepRef.current?.snapToIndex(0));
+      router.push('/sleep-detail' as any);
     }
   }, [sleepSheetOpenRequest]);
 
@@ -57,8 +57,7 @@ export function StepsSleepRow() {
 
   const openSleep = useCallback(() => {
     Haptics.selectionAsync();
-    setShowSleep(true);
-    requestAnimationFrame(() => sleepRef.current?.snapToIndex(0));
+    router.push('/sleep-detail' as any);
   }, []);
 
   return (
@@ -485,8 +484,7 @@ const styles = StyleSheet.create({
   cardValue: {
     fontSize: 24,
     color: '#2F241E',
-    fontFamily: Typography.fonts.serif,
-    fontWeight: '500',
+    fontFamily: Typography.fonts.headingBold,
   },
   cardValueMuted: {
     color: '#8a7e74',

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
@@ -362,7 +363,7 @@ function DailyView({
           <View style={styles.emptyMealList}>
             <Ionicons name="restaurant-outline" size={26} color={C.muted} />
             <ThemedText variant="body" color={C.muted} style={{ marginTop: 8 }}>
-              No meals yet — your timeline will appear here.
+              No meals yet. Your timeline will appear here.
             </ThemedText>
           </View>
         ) : (
@@ -391,7 +392,7 @@ function DailyView({
 
 function buildDailyInsight(count: number): InsightPart[] {
   if (count === 0) {
-    return [{ text: 'No meals logged yet — your Route is waiting.' }];
+    return [{ text: 'No meals logged yet. Your Route is waiting.' }];
   }
   if (count === 1) {
     return [
@@ -719,6 +720,31 @@ function WeeklyView({ data, calorieGoal, hydrationGoalMl, proteinGoal, unitPref 
         <BarRow values={data.days.map((d) => d.protein)} max={maxProtein} dayLabels={data.days.map((d) => d.day)} isFuture={data.days.map((d) => d.isFuture)} color={C.proteinGreen} />
       </View>
 
+      {/* Sleep card */}
+      <Pressable
+        style={[styles.cardBig, CARD_SHADOW]}
+        onPress={() => {
+          Haptics.selectionAsync();
+          router.push('/sleep-detail' as any);
+        }}
+      >
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardHeaderLabel}>Sleep</Text>
+          <Text style={styles.cardHeaderValue}>
+            {data.avgSleepMinutes > 0
+              ? `${(data.avgSleepMinutes / 60).toFixed(1)}h avg`
+              : 'not logged'}
+          </Text>
+        </View>
+        <BarRow
+          values={data.days.map((d) => d.sleepMinutes)}
+          max={Math.max(...data.days.map((d) => d.sleepMinutes), 600)}
+          dayLabels={data.days.map((d) => d.day)}
+          isFuture={data.days.map((d) => d.isFuture)}
+          color="#6366F1"
+        />
+      </Pressable>
+
       {/* Consistency sentence (plain text, no card) */}
       <Text style={styles.flatSentence}>
         You logged meals{' '}
@@ -732,7 +758,7 @@ function WeeklyView({ data, calorieGoal, hydrationGoalMl, proteinGoal, unitPref 
 function buildWeeklyInsight(data: WeeklyData, calorieGoal: number): InsightPart[] {
   const past = data.days.filter((d) => !d.isFuture && d.calories > 0);
   if (past.length === 0) {
-    return [{ text: 'Nothing logged yet this week — start with one meal.' }];
+    return [{ text: 'Nothing logged yet this week. Start with one meal.' }];
   }
   const best = past.reduce((a, b) => (b.calories > a.calories ? b : a));
   const bestDayName = bestDayLong(best.date);
@@ -741,7 +767,7 @@ function buildWeeklyInsight(data: WeeklyData, calorieGoal: number): InsightPart[
     return [
       { text: 'Your best day was ' },
       { text: bestDayName, highlight: C.daily },
-      { text: ` — you hit ${pct}% of your calorie goal.` },
+      { text: `. You hit ${pct}% of your calorie goal.` },
     ];
   }
   return [
@@ -913,7 +939,7 @@ function MonthlyView({ data, streak, unitPref }: MonthlyViewProps) {
       <Text style={styles.flatSentence}>
         Your consistency score is{' '}
         <Text style={{ color: C.weekly, fontFamily: SANS_MED }}>{consistency} / 100</Text>
-        {' '}— {consistency >= 60 ? 'that’s a solid rhythm.' : 'plenty of room to grow.'}
+        {'. '}{consistency >= 60 ? 'That’s a solid rhythm.' : 'Plenty of room to grow.'}
       </Text>
     </View>
   );
@@ -922,10 +948,10 @@ function MonthlyView({ data, streak, unitPref }: MonthlyViewProps) {
 function buildMonthlyInsight(data: MonthlyData): InsightPart[] {
   const past = data.days.filter((d) => !d.isFuture).length;
   if (data.activeDays === 0) {
-    return [{ text: `${data.monthLabel} is open canvas — your first meal starts the story.` }];
+    return [{ text: `${data.monthLabel} is open canvas. Your first meal starts the story.` }];
   }
   return [
-    { text: `${data.monthLabel} has been solid — you logged ` },
+    { text: `${data.monthLabel} has been solid. You logged ` },
     { text: `${data.activeDays} of ${past} days`, highlight: C.daily },
     { text: ' so far.' },
   ];

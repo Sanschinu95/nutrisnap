@@ -30,7 +30,7 @@ import { useActivityStore } from '@/stores/activity.store';
 import { useTreatDayStore } from '@/stores/treatDay.store';
 import { TreatDayBanner } from '@/components/ui/TreatDayBanner';
 import { TreatDayCelebration } from '@/components/ui/TreatDayCelebration';
-import { StreakCard } from '@/components/ui/StreakCard';
+import { StreakPill } from '@/components/ui/StreakPill';
 import { MilestoneCelebration } from '@/components/ui/MilestoneCelebration';
 import type { FoodEntry } from '@/types/nutrition';
 import { trackEvent } from '@/lib/telemetry';
@@ -333,6 +333,8 @@ export default function HomeScreen() {
               </View>
             );
           })}
+          <View style={{ flex: 1 }} />
+          <StreakPill />
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(140).springify()} style={styles.heroGrid}>
@@ -377,12 +379,7 @@ export default function HomeScreen() {
           <SleepMorningPrompt
             onEdit={() => useActivityStore.getState().requestOpenSleepSheet()}
           />
-          <StreakCard />
           <StepsSleepRow />
-        </Animated.View>
-
-        <Animated.View entering={FadeInDown.delay(180).springify()} style={styles.pinnedInsightSlot}>
-          <PinnedInsight />
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.routeSection}>
@@ -434,6 +431,9 @@ export default function HomeScreen() {
           </View>
         </Animated.View>
 
+        <Animated.View entering={FadeInDown.delay(220).springify()} style={styles.pinnedInsightSlot}>
+          <PinnedInsight />
+        </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(260).springify()} style={styles.insightCard}>
           <View style={styles.insightIcon}>

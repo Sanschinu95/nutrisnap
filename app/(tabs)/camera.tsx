@@ -48,16 +48,16 @@ export default function CameraScreen() {
     loadToday();
   }, [loadToday]);
 
-  // First-time scan tutorial: if the user has never seen it, redirect to
-  // scan-tutorial before showing the camera. Fires every time the Scan tab
-  // gains focus so a user who taps "Show scan tips again" in Settings gets
-  // it on their next Scan visit. `router.replace` keeps the tutorial out of
-  // the back stack.
+  // First-time scan tutorial: if the user has never seen it, push the
+  // tutorial screen over the camera. Using `push` (not `replace`) so the
+  // Scan tab stays mounted underneath — otherwise, when the tutorial calls
+  // router.replace back to the tab, the tab's useFocusEffect refires and
+  // the tutorial flashes for a split second before the flag write commits.
   useFocusEffect(
     useCallback(() => {
       const seen = useUserStore.getState().profile?.has_seen_scan_tutorial;
-      if (seen === false) {
-        router.replace('/scan-tutorial' as any);
+      if (seen !== true) {
+        router.push('/scan-tutorial' as any);
       }
     }, []),
   );
