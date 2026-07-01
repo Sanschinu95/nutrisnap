@@ -1,13 +1,19 @@
 /**
- * Separate Groq key rotation for the AI Nutrition Coach.
+ * Groq API key rotation for the remaining client-side Groq call sites.
  *
- * The coach uses a TEXT model (llama-3.3-70b-versatile) on a different rate
- * limit than the vision model in lib/groq.ts. Two pools so a dinner-time scan
- * rush doesn't eat the coach's quota, with overflow from coach → scan keys.
+ * HISTORY:
+ *  - Coach chat (`lib/coachApi.ts`) used to hit Groq directly from the phone
+ *    with `EXPO_PUBLIC_GROQ_COACH_KEY_1/2` inside the JS bundle. It now goes
+ *    through the `coach-chat` Supabase Edge Function, so those keys are
+ *    server-side only.
+ *  - Two client-side call sites still bundle keys:
+ *      * `lib/treatDay.ts`         (treat-day suggestion generation)
+ *      * `lib/nutritionEstimate.ts` (Fill-with-AI on manual entry)
+ *    Both use the scan-key pool via `getNextCoachKey()` for now.
  *
- * EXPO_PUBLIC_GROQ_COACH_KEY_1/2 in .env.local are the dedicated coach keys.
- * If they're missing or both cooling, we fall through to the existing scan
- * keys so the coach still works for beta without new accounts.
+ * TODO: move treatDay + nutritionEstimate behind Edge Functions and delete
+ *       this file entirely. Any `EXPO_PUBLIC_*` key is extractable from the
+ *       APK.
  */
 
 interface KeyState {
@@ -19,11 +25,6 @@ function mkKey(key: string | undefined): KeyState {
   return { key: key ?? '', cooldownUntil: 0 };
 }
 
-const COACH_KEYS: KeyState[] = [
-  mkKey(process.env.EXPO_PUBLIC_GROQ_COACH_KEY_1),
-  mkKey(process.env.EXPO_PUBLIC_GROQ_COACH_KEY_2),
-];
-
 const SCAN_KEYS: KeyState[] = [
   mkKey(process.env.EXPO_PUBLIC_GROQ_API_KEY_1),
   mkKey(process.env.EXPO_PUBLIC_GROQ_API_KEY_2),
@@ -33,32 +34,24 @@ const SCAN_KEYS: KeyState[] = [
   mkKey(process.env.EXPO_PUBLIC_GROQ_API_KEY_6),
 ];
 
-let lastCoachIndex = -1;
+let cursor = -1;
 
+/**
+ * Return an available scan key. Named `getNextCoachKey` for backwards
+ * compatibility with treatDay/nutritionEstimate; those call sites should
+ * migrate to a dedicated helper (or Edge Function) later.
+ */
 export function getNextCoachKey(): string {
   const now = Date.now();
-
-  // Round-robin through coach keys, skip empty + cooling
-  for (let i = 0; i < COACH_KEYS.length; i++) {
-    lastCoachIndex = (lastCoachIndex + 1) % COACH_KEYS.length;
-    const k = COACH_KEYS[lastCoachIndex];
+  for (let i = 0; i < SCAN_KEYS.length; i++) {
+    cursor = (cursor + 1) % SCAN_KEYS.length;
+    const k = SCAN_KEYS[cursor];
     if (k.key && k.cooldownUntil < now) return k.key;
   }
-
-  // Overflow: try scan keys (first available)
-  for (const k of SCAN_KEYS) {
-    if (k.key && k.cooldownUntil < now) return k.key;
-  }
-
   throw new Error('ALL_KEYS_COOLING');
 }
 
 export function markKeyCooling(key: string, durationMs: number = 60_000): void {
-  for (const pool of [COACH_KEYS, SCAN_KEYS]) {
-    const found = pool.find((k) => k.key === key);
-    if (found) {
-      found.cooldownUntil = Date.now() + durationMs;
-      return;
-    }
-  }
+  const found = SCAN_KEYS.find((k) => k.key === key);
+  if (found) found.cooldownUntil = Date.now() + durationMs;
 }

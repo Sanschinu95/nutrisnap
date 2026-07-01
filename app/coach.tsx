@@ -191,7 +191,13 @@ export default function CoachScreen() {
         });
       } catch (err) {
         const code = err instanceof Error ? err.message : '';
-        if (code === 'COACH_BUSY') {
+        if (code === 'COACH_LIMIT') {
+          // Server-authoritative daily quota — surface the paywall.
+          trackEvent('coach_limit_reached');
+          setShowLimit(true);
+        } else if (code === 'COACH_AUTH') {
+          showError('Please sign in again to keep chatting.');
+        } else if (code === 'COACH_BUSY') {
           showError('The coach is taking a breather. Try again in a minute.');
         } else if (code === 'COACH_UNAVAILABLE') {
           showError('Couldn’t reach the coach right now. Your question is saved.');

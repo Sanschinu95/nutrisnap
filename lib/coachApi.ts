@@ -1,12 +1,13 @@
 /**
- * Coach chat API. Separate from lib/groq.ts (which is vision/scan).
- * Uses llama-3.3-70b-versatile via the same Groq OpenAI-compatible endpoint.
+ * Coach chat API. Now proxied through the `coach-chat` Supabase Edge Function
+ * so the Groq keys stay server-side. See supabase/functions/coach-chat/index.ts.
  *
- * Extracts the ACTION: <one-liner> trailing line per the system prompt
- * convention so the UI can render it as a pinnable card.
+ * The client still owns two presentation concerns:
+ *   - ACTION: <one-liner> extraction (rendered as a pinnable card)
+ *   - cleanCoachText post-processing (em dashes, markdown scrubbing)
  */
 
-import { getNextCoachKey, markKeyCooling } from './coachKeyPool';
+import { supabase } from './supabase';
 
 export interface CoachMessage {
   role: 'system' | 'user' | 'assistant';
@@ -18,80 +19,50 @@ export interface CoachResponse {
   action: string | null;
 }
 
-const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const COACH_MODEL = 'llama-3.3-70b-versatile';
-
 export async function sendCoachMessage(
   systemPrompt: string,
   conversationHistory: CoachMessage[],
   userMessage: string,
-  retries: number = 3,
 ): Promise<CoachResponse> {
-  const messages: CoachMessage[] = [
-    { role: 'system', content: systemPrompt },
-    ...conversationHistory,
-    { role: 'user', content: userMessage },
-  ];
+  const { data, error } = await supabase.functions.invoke<{
+    content?: string;
+    error?: string;
+  }>('coach-chat', {
+    body: {
+      systemPrompt,
+      history: conversationHistory,
+      userMessage,
+    },
+  });
 
-  let lastError: unknown = null;
-
-  for (let attempt = 0; attempt < retries; attempt++) {
-    let key: string;
-    try {
-      key = getNextCoachKey();
-    } catch {
-      throw new Error('COACH_BUSY');
-    }
-
-    try {
-      const response = await fetch(GROQ_URL, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${key}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: COACH_MODEL,
-          messages,
-          max_tokens: 800,
-          temperature: 0.7,
-          top_p: 0.9,
-        }),
-      });
-
-      if (response.status === 429) {
-        markKeyCooling(key, 60_000);
-        continue;
-      }
-
-      if (!response.ok) {
-        markKeyCooling(key, 30_000);
-        lastError = new Error(`Groq API error: ${response.status}`);
-        continue;
-      }
-
-      const data = await response.json();
-      const fullText: string = data?.choices?.[0]?.message?.content ?? '';
-
-      // Pull the ACTION: line (case-insensitive). Last match wins, in case the
-      // model accidentally produces multiple.
-      const actionRegex = /ACTION:\s*(.+)/gi;
-      let actionMatch: RegExpExecArray | null = null;
-      let m: RegExpExecArray | null;
-      while ((m = actionRegex.exec(fullText)) !== null) actionMatch = m;
-
-      const rawAction = actionMatch ? actionMatch[1].trim() : null;
-      const rawText = fullText.replace(/\n?ACTION:\s*.+/gi, '').trim();
-
-      return { text: cleanCoachText(rawText), action: rawAction ? cleanCoachText(rawAction) : null };
-    } catch (error) {
-      lastError = error;
-      markKeyCooling(key, 30_000);
-    }
+  if (error) {
+    // supabase-js wraps HTTP errors in a FunctionsHttpError whose `context`
+    // holds the underlying Response. Peek at the body to surface a stable
+    // error code for the store.
+    const status = (error as { context?: { status?: number } }).context?.status;
+    if (status === 401) throw new Error('COACH_AUTH');
+    if (status === 429) throw new Error('COACH_LIMIT');
+    if (status === 503) throw new Error('COACH_BUSY');
+    throw new Error('COACH_UNAVAILABLE');
   }
 
-  if (lastError instanceof Error) throw lastError;
-  throw new Error('COACH_UNAVAILABLE');
+  const content = data?.content ?? '';
+  if (!content) throw new Error('COACH_EMPTY');
+
+  // Pull the ACTION: line (case-insensitive). Last match wins in case the
+  // model accidentally produces multiple.
+  const actionRegex = /ACTION:\s*(.+)/gi;
+  let actionMatch: RegExpExecArray | null = null;
+  let m: RegExpExecArray | null;
+  while ((m = actionRegex.exec(content)) !== null) actionMatch = m;
+
+  const rawAction = actionMatch ? actionMatch[1].trim() : null;
+  const rawText = content.replace(/\n?ACTION:\s*.+/gi, '').trim();
+
+  return {
+    text: cleanCoachText(rawText),
+    action: rawAction ? cleanCoachText(rawAction) : null,
+  };
 }
 
 /**

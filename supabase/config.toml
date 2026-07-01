@@ -1,0 +1,8 @@
+# Minimal Supabase local config. `supabase init` normally writes a much
+# larger version of this file; we only need enough for `supabase functions`
+# to work against the linked remote project.
+
+project_id = "nutrisnap"
+
+[functions.coach-chat]
+verify_jwt = true
