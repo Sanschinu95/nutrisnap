@@ -20,7 +20,6 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import { ThemedText } from '@/components/ui/ThemedText';
 import { useAuthStore } from '@/stores/auth.store';
 import { useUserStore } from '@/stores/user.store';
@@ -36,14 +35,12 @@ const TEXT_MUTED = '#8a7e74';
 interface TutorialSlide {
   headline: string;
   subtitle: string;
-  /** Bundled PNG. Undefined when the slide uses the inline `placeholder` renderer. */
-  image?: number;
-  placeholder?: 'packaged';
+  image: number;
   accessibilityLabel: string;
 }
 
-// TODO: replace the 'packaged' placeholder with a real photo showing a
-// packaged item next to its nutrition label once we have one.
+// TODO: swap the nt4 image on the "Scan the Ingredients" slide for a real
+// packaged-food-with-label photo when one is available.
 const TUTORIAL_SLIDES: TutorialSlide[] = [
   {
     headline: 'Include a Reference Object',
@@ -53,25 +50,25 @@ const TUTORIAL_SLIDES: TutorialSlide[] = [
       'Two food photos. Top: a tofu bowl with garlic bread and a drink glass beside it, marked with a green checkmark. Bottom: the same bowl alone, marked with a red X.',
   },
   {
-    headline: 'Capture the Full Volume',
-    subtitle: 'Frame the whole meal so quantity is visible.',
-    image: require('../assets/scan/nt2.png'),
-    accessibilityLabel:
-      'Two food photos. Top: a pasta bowl framed wide so the full portion is visible, marked with a green checkmark. Bottom: the same pasta cropped too tightly, marked with a red X.',
-  },
-  {
-    headline: 'Scan the Ingredients',
-    subtitle: 'For packaged food, snap the nutrition label so macros register accurately.',
-    placeholder: 'packaged',
-    accessibilityLabel:
-      'Illustration showing a food package alongside a nutrition label with a scanning frame, marked with a green checkmark.',
-  },
-  {
     headline: 'One Meal Per Photo',
     subtitle: 'Take separate shots for each meal or snack.',
     image: require('../assets/scan/nt3.png'),
     accessibilityLabel:
       'Two food photos. Top: a single meal on its own plate, marked with a green checkmark. Bottom: multiple different meals grouped in one shot, marked with a red X.',
+  },
+  {
+    headline: 'Scan the Ingredients',
+    subtitle: 'For packaged food, snap the nutrition label so macros register accurately.',
+    image: require('../assets/scan/nt4.png'),
+    accessibilityLabel:
+      'Reference photo used for the packaged-food ingredients tip.',
+  },
+  {
+    headline: 'Capture the Full Volume',
+    subtitle: 'Frame the whole meal so quantity is visible.',
+    image: require('../assets/scan/nt2.png'),
+    accessibilityLabel:
+      'Two food photos. Top: a pasta bowl framed wide so the full portion is visible, marked with a green checkmark. Bottom: the same pasta cropped too tightly, marked with a red X.',
   },
 ];
 
@@ -196,88 +193,8 @@ function SlideView({ slide, isCurrent }: { slide: TutorialSlide; isCurrent: bool
         accessibilityLabel={slide.accessibilityLabel}
         accessible
       >
-        {slide.image ? (
-          <Image source={slide.image} style={styles.image} resizeMode="contain" />
-        ) : (
-          <PackagedFoodIllustration />
-        )}
+        <Image source={slide.image} style={styles.image} resizeMode="contain" />
       </Animated.View>
-    </View>
-  );
-}
-
-/* ─── Placeholder illustration for slide 3 ───────────────────── */
-// TODO: swap this SVG for a real packaged-food photo when one is available.
-
-function PackagedFoodIllustration() {
-  return (
-    <View style={styles.illustrationBox}>
-      <Svg width="100%" height="100%" viewBox="0 0 320 320" preserveAspectRatio="xMidYMid meet">
-        <Defs>
-          <SvgLinearGradient id="pkgBg" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor="#F0FAF0" />
-            <Stop offset="1" stopColor="#DCFCE7" />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="pkgBody" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#F97316" />
-            <Stop offset="1" stopColor="#C2410C" />
-          </SvgLinearGradient>
-        </Defs>
-
-        {/* Background card */}
-        <Rect x="0" y="0" width="320" height="320" rx="20" fill="url(#pkgBg)" />
-
-        {/* Package silhouette */}
-        <Rect x="52" y="72" width="88" height="176" rx="10" fill="url(#pkgBody)" />
-        <Rect x="62" y="92" width="68" height="10" rx="3" fill="rgba(255,255,255,0.6)" />
-        <Rect x="62" y="110" width="52" height="6" rx="2" fill="rgba(255,255,255,0.4)" />
-        <SvgText
-          x="96"
-          y="180"
-          fontSize="46"
-          textAnchor="middle"
-          fontWeight="700"
-          fill="#FFFFFF"
-        >
-          🥫
-        </SvgText>
-
-        {/* Nutrition label card */}
-        <Rect x="168" y="72" width="108" height="176" rx="10" fill="#FFFFFF" stroke="#e8e2d6" strokeWidth={1.5} />
-        <SvgText x="222" y="98" fontSize="10" textAnchor="middle" fill="#2F241E" fontWeight="700" letterSpacing="1">
-          NUTRITION
-        </SvgText>
-        <Rect x="180" y="106" width="84" height="1.5" fill="#2F241E" />
-
-        {/* Fake nutrition rows */}
-        <SvgText x="182" y="124" fontSize="10" fill="#2F241E" fontWeight="600">Calories</SvgText>
-        <SvgText x="262" y="124" fontSize="10" fill="#2F241E" fontWeight="700" textAnchor="end">240</SvgText>
-
-        <SvgText x="182" y="142" fontSize="9" fill="#5a4f45">Protein</SvgText>
-        <SvgText x="262" y="142" fontSize="9" fill="#2F241E" textAnchor="end">18g</SvgText>
-
-        <SvgText x="182" y="158" fontSize="9" fill="#5a4f45">Carbs</SvgText>
-        <SvgText x="262" y="158" fontSize="9" fill="#2F241E" textAnchor="end">32g</SvgText>
-
-        <SvgText x="182" y="174" fontSize="9" fill="#5a4f45">Fat</SvgText>
-        <SvgText x="262" y="174" fontSize="9" fill="#2F241E" textAnchor="end">6g</SvgText>
-
-        {/* Scan reticle corners */}
-        <Rect x="164" y="68" width="20" height="3" rx="1.5" fill="#22C55E" />
-        <Rect x="164" y="68" width="3" height="20" rx="1.5" fill="#22C55E" />
-        <Rect x="260" y="68" width="20" height="3" rx="1.5" fill="#22C55E" />
-        <Rect x="277" y="68" width="3" height="20" rx="1.5" fill="#22C55E" />
-        <Rect x="164" y="245" width="20" height="3" rx="1.5" fill="#22C55E" />
-        <Rect x="164" y="228" width="3" height="20" rx="1.5" fill="#22C55E" />
-        <Rect x="260" y="245" width="20" height="3" rx="1.5" fill="#22C55E" />
-        <Rect x="277" y="228" width="3" height="20" rx="1.5" fill="#22C55E" />
-
-        {/* Green checkmark badge */}
-        <Rect x="264" y="20" width="36" height="36" rx="18" fill="#22C55E" />
-        <SvgText x="282" y="42" fontSize="22" textAnchor="middle" fill="#FFFFFF" fontWeight="900">
-          ✓
-        </SvgText>
-      </Svg>
     </View>
   );
 }
@@ -363,12 +280,6 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     borderRadius: 20,
-  },
-  illustrationBox: {
-    flex: 1,
-    width: '100%',
-    borderRadius: 20,
-    overflow: 'hidden',
   },
 
   bottomBar: {
