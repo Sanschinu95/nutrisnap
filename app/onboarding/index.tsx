@@ -32,7 +32,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { ThemedText } from '@/components/ui/ThemedText';
 import { ScrollWheelPicker, PICKER_GREEN } from '@/components/ui/ScrollWheelPicker';
 import { Colors, BorderRadius, Spacing, Typography } from '@/constants/theme';
@@ -571,10 +571,12 @@ function GoalWeightStep({
   const tip = goalTip(currentKg, goalKg);
   return (
     <Question title="What's your target weight?" subtitle="Set a realistic weight goal for yourself.">
-      <Animated.View key={tip} entering={FadeIn.duration(220)} style={styles.tipCard}>
+      {/* Static tip card — was remounting with FadeIn on every scroll tick,
+          causing 3-4 concurrent 220ms animations while the wheel spun. */}
+      <View style={styles.tipCard}>
         <Ionicons name="bulb-outline" size={16} color={PICKER_GREEN} />
         <ThemedText style={styles.tipText}>{tip}</ThemedText>
-      </Animated.View>
+      </View>
       {unit === 'metric' ? (
         <ScrollWheelPicker
           min={30}
@@ -627,14 +629,22 @@ function PaceStep({
   return (
     <Question title="How fast do you want to reach your goal?" subtitle={subtitle}>
       <View style={styles.paceValueWrap}>
-        <ThemedText style={styles.paceValue}>{pace.toFixed(2)} kg</ThemedText>
+        <ThemedText
+          style={styles.paceValue}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+        >
+          {pace.toFixed(2)} kg
+        </ThemedText>
         <ThemedText style={styles.paceValueLabel}>per week</ThemedText>
       </View>
       <PaceSlider min={0.25} max={1.0} step={0.05} value={pace} onChange={onChange} />
-      <Animated.View key={eta} entering={FadeIn.duration(220)} style={styles.tipCard}>
+      {/* Static ETA card — the FadeIn key={eta} was remounting on every
+          slider tick, competing with the slider gesture. */}
+      <View style={styles.tipCard}>
         <Ionicons name="time-outline" size={16} color={PICKER_GREEN} />
         <ThemedText style={styles.tipText}>You will reach your goal in about {eta}.</ThemedText>
-      </Animated.View>
+      </View>
     </Question>
   );
 }
@@ -942,14 +952,20 @@ const styles = StyleSheet.create({
   tipText: { flex: 1, color: PICKER_GREEN, fontSize: 13, lineHeight: 18 },
 
   /* Pace */
-  paceValueWrap: { alignItems: 'center', gap: 2 },
-  paceValue: {
-    fontSize: 48,
-    fontFamily: Typography.fonts.serif,
-    color: '#2F241E',
-    fontWeight: '500',
+  paceValueWrap: {
+    alignItems: 'center',
+    gap: 2,
+    alignSelf: 'stretch',
+    paddingHorizontal: 24,
   },
-  paceValueLabel: { fontSize: 16, color: '#8a7e74' },
+  paceValue: {
+    fontSize: 40,
+    lineHeight: 46,
+    fontFamily: Typography.fonts.headingBold,
+    color: '#2F241E',
+    textAlign: 'center',
+  },
+  paceValueLabel: { fontSize: 15, color: '#8a7e74' },
   sliderHit: {
     height: 44,
     justifyContent: 'center',
