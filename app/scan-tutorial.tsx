@@ -1,10 +1,7 @@
 /**
- * First-time scan tutorial. Five slides teaching good scanning habits.
+ * First-time scan tutorial. Four slides teaching good scanning habits.
  * Shown once per user; `has_seen_scan_tutorial` on the profile persists the
  * outcome so signing out and back in on the same device doesn't re-trigger.
- *
- * TODO: replace tutorial-lighting placeholder SVG with a real photo once we
- *       have "well-lit vs dim yellow lighting" comparison shots.
  */
 
 import { useCallback, useRef, useState } from 'react';
@@ -23,7 +20,6 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import Svg, { Defs, LinearGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import { ThemedText } from '@/components/ui/ThemedText';
 import { useAuthStore } from '@/stores/auth.store';
 import { useUserStore } from '@/stores/user.store';
@@ -39,8 +35,7 @@ const TEXT_MUTED = '#8a7e74';
 interface TutorialSlide {
   headline: string;
   subtitle: string;
-  image?: number; // require() result
-  placeholder?: 'lighting' | 'single-meal';
+  image: number; // require() result
   accessibilityLabel: string;
 }
 
@@ -60,13 +55,6 @@ const TUTORIAL_SLIDES: TutorialSlide[] = [
       'Two food photos. Top: a pasta bowl framed with the sides visible, marked with a green checkmark. Bottom: the same pasta zoomed in too closely, marked with a red X.',
   },
   {
-    headline: 'Avoid Top-Down Shots',
-    subtitle: 'Side views capture quantity better.',
-    image: require('../assets/scan/nt3.png'),
-    accessibilityLabel:
-      'Two food photos. Top: a bowl shot from a slight angle showing depth, marked with a green checkmark. Bottom: the same bowl shot directly top-down, marked with a red X.',
-  },
-  {
     headline: 'Shoot in Good Light',
     subtitle: 'Natural light gives the truest colors.',
     image: require('../assets/scan/nt4.png'),
@@ -76,9 +64,9 @@ const TUTORIAL_SLIDES: TutorialSlide[] = [
   {
     headline: 'One Meal Per Photo',
     subtitle: 'Take separate shots for each meal or snack.',
-    placeholder: 'single-meal',
+    image: require('../assets/scan/nt3.png'),
     accessibilityLabel:
-      'Illustration showing a single meal on its own plate marked with a green checkmark, and multiple different meals in one photo marked with a red X.',
+      'Two food photos. Top: a single meal on its own plate, marked with a green checkmark. Bottom: multiple different meals grouped in one shot, marked with a red X.',
   },
 ];
 
@@ -203,78 +191,8 @@ function SlideView({ slide, isCurrent }: { slide: TutorialSlide; isCurrent: bool
         accessibilityLabel={slide.accessibilityLabel}
         accessible
       >
-        {slide.image ? (
-          <Image source={slide.image} style={styles.image} resizeMode="cover" />
-        ) : slide.placeholder === 'single-meal' ? (
-          <SingleMealPlaceholder />
-        ) : (
-          <LightingPlaceholder />
-        )}
+        <Image source={slide.image} style={styles.image} resizeMode="contain" />
       </Animated.View>
-    </View>
-  );
-}
-
-/* ─── SVG placeholders (see file-level TODO) ─────────────────── */
-
-function SingleMealPlaceholder() {
-  return (
-    <View style={styles.placeholderBox}>
-      <Svg width="100%" height="100%" viewBox="0 0 300 300" preserveAspectRatio="xMidYMid meet">
-        <Defs>
-          <LinearGradient id="good" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor="#DCFCE7" />
-            <Stop offset="1" stopColor="#BBF7D0" />
-          </LinearGradient>
-          <LinearGradient id="bad" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor="#FEE2E2" />
-            <Stop offset="1" stopColor="#FECACA" />
-          </LinearGradient>
-        </Defs>
-        <Rect x="0" y="0" width="300" height="145" rx="18" fill="url(#good)" />
-        <SvgText x="150" y="82" fontSize="52" textAnchor="middle">🍛</SvgText>
-        <SvgText x="150" y="128" fontSize="14" fill="#166534" textAnchor="middle" fontWeight="600">
-          One meal — clean data
-        </SvgText>
-
-        <Rect x="0" y="155" width="300" height="145" rx="18" fill="url(#bad)" />
-        <SvgText x="90" y="230" fontSize="34" textAnchor="middle">🍕</SvgText>
-        <SvgText x="150" y="230" fontSize="34" textAnchor="middle">🍔</SvgText>
-        <SvgText x="210" y="230" fontSize="34" textAnchor="middle">🥗</SvgText>
-        <SvgText x="150" y="278" fontSize="14" fill="#991B1B" textAnchor="middle" fontWeight="600">
-          Multiple meals — confusing
-        </SvgText>
-      </Svg>
-    </View>
-  );
-}
-
-function LightingPlaceholder() {
-  return (
-    <View style={styles.placeholderBox}>
-      <Svg width="100%" height="100%" viewBox="0 0 300 300" preserveAspectRatio="xMidYMid meet">
-        <Defs>
-          <LinearGradient id="bright" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor="#FEF9C3" />
-            <Stop offset="1" stopColor="#FDE68A" />
-          </LinearGradient>
-          <LinearGradient id="dim" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor="#78350F" />
-            <Stop offset="1" stopColor="#451A03" />
-          </LinearGradient>
-        </Defs>
-        <Rect x="0" y="0" width="300" height="145" rx="18" fill="url(#bright)" />
-        <SvgText x="150" y="90" fontSize="52" textAnchor="middle">🥗</SvgText>
-        <SvgText x="150" y="128" fontSize="14" fill="#78350F" textAnchor="middle" fontWeight="600">
-          Bright, natural light
-        </SvgText>
-
-        <Rect x="0" y="155" width="300" height="145" rx="18" fill="url(#dim)" />
-        <SvgText x="150" y="245" fontSize="52" textAnchor="middle" opacity="0.4">🥗</SvgText>
-        <SvgText x="150" y="283" fontSize="14" fill="#FCD34D" textAnchor="middle" fontWeight="600">
-          Dim, yellow light
-        </SvgText>
-      </Svg>
     </View>
   );
 }
@@ -353,19 +271,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Fill the wrap and let resizeMode="contain" letterbox the actual image so
+  // it's centered and never cropped. The source PNGs are ~1:1 with a stacked
+  // good/bad pair inside.
   image: {
+    flex: 1,
     width: '100%',
-    aspectRatio: 1,
-    maxHeight: 460,
     borderRadius: 20,
-  },
-  placeholderBox: {
-    width: '100%',
-    aspectRatio: 1,
-    maxHeight: 460,
-    borderRadius: 20,
-    overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
   },
 
   bottomBar: {
