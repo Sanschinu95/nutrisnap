@@ -39,6 +39,8 @@ export default function ProfileScreen() {
   const [showAvatarSheet, setShowAvatarSheet] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [showStreakReset, setShowStreakReset] = useState(false);
+  const [scanTipsToast, setScanTipsToast] = useState<string | null>(null);
+  const resetScanTutorial = useUserStore((s) => s.resetScanTutorial);
 
   useEffect(() => {
     if (!user?.id) {
@@ -333,6 +335,25 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.section}>
+          <ThemedText variant="h3">Help</ThemedText>
+          <View style={styles.settingsCard}>
+            <SettingsRow
+              title="Show scan tips again"
+              icon="bulb-outline"
+              trailing=""
+              showChevron
+              onPress={async () => {
+                if (!user?.id) return;
+                Haptics.selectionAsync();
+                await resetScanTutorial(user.id);
+                setScanTipsToast('Scan tips will show next time you scan');
+                setTimeout(() => setScanTipsToast(null), 2600);
+              }}
+            />
+          </View>
+        </View>
+
+        <View style={styles.section}>
           <ThemedText variant="h3">Account</ThemedText>
           <View style={styles.settingsCard}>
             <SettingsRow
@@ -387,6 +408,17 @@ export default function ProfileScreen() {
             userId={user.id}
             onClose={() => setFeedbackType(null)}
           />
+        </View>
+      )}
+
+      {scanTipsToast && (
+        <View pointerEvents="none" style={styles.toastWrap}>
+          <View style={styles.toast}>
+            <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
+            <ThemedText variant="labelSmall" color={Colors.white} style={{ flex: 1 }}>
+              {scanTipsToast}
+            </ThemedText>
+          </View>
         </View>
       )}
 
@@ -631,6 +663,23 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
     paddingVertical: Spacing.md,
     alignItems: 'center',
+  },
+  toastWrap: {
+    position: 'absolute',
+    bottom: 40,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  toast: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.brown,
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    maxWidth: '90%',
   },
   name: {
     fontSize: 34,

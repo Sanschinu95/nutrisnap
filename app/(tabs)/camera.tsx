@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Image, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import Animated, {
   FadeInDown,
   useAnimatedStyle,
@@ -19,6 +19,7 @@ import { ThemedText } from '@/components/ui/ThemedText';
 import { useTheme } from '@/hooks/useTheme';
 import { useGroq } from '@/hooks/useGroq';
 import { useDailyStore } from '@/stores/daily.store';
+import { useUserStore } from '@/stores/user.store';
 import { BorderRadius, Colors, Spacing } from '@/constants/theme';
 import { trackEvent } from '@/lib/telemetry';
 import { useChartSound } from '@/hooks/useChartSound';
@@ -46,6 +47,20 @@ export default function CameraScreen() {
   useEffect(() => {
     loadToday();
   }, [loadToday]);
+
+  // First-time scan tutorial: if the user has never seen it, redirect to
+  // scan-tutorial before showing the camera. Fires every time the Scan tab
+  // gains focus so a user who taps "Show scan tips again" in Settings gets
+  // it on their next Scan visit. `router.replace` keeps the tutorial out of
+  // the back stack.
+  useFocusEffect(
+    useCallback(() => {
+      const seen = useUserStore.getState().profile?.has_seen_scan_tutorial;
+      if (seen === false) {
+        router.replace('/scan-tutorial' as any);
+      }
+    }, []),
+  );
 
   useEffect(() => {
     if (result) {

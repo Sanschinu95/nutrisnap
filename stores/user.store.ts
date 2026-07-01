@@ -54,6 +54,8 @@ interface UserActions {
   completeOnboarding: (data: OnboardingData) => Promise<{ success: boolean; error?: string }>;
   updateStreak: () => Promise<void>;
   updateArchetypeProgress: (goalMet: boolean) => Promise<void>;
+  markScanTutorialSeen: (userId: string) => Promise<void>;
+  resetScanTutorial: (userId: string) => Promise<void>;
   clearError: () => void;
   reset: () => void;
 }
@@ -349,6 +351,30 @@ export const useUserStore = create<UserStore>((set, get) => ({
     } catch (error) {
       console.warn('Archetype progress update failed:', error);
     }
+  },
+
+  markScanTutorialSeen: async (userId: string) => {
+    const { profile } = get();
+    if (profile) {
+      set({ profile: { ...profile, has_seen_scan_tutorial: true } });
+    }
+    const { error } = await supabase
+      .from('profiles')
+      .update({ has_seen_scan_tutorial: true })
+      .eq('id', userId);
+    if (error) console.warn('markScanTutorialSeen failed:', error.message);
+  },
+
+  resetScanTutorial: async (userId: string) => {
+    const { profile } = get();
+    if (profile) {
+      set({ profile: { ...profile, has_seen_scan_tutorial: false } });
+    }
+    const { error } = await supabase
+      .from('profiles')
+      .update({ has_seen_scan_tutorial: false })
+      .eq('id', userId);
+    if (error) console.warn('resetScanTutorial failed:', error.message);
   },
 
   clearError: () => set({ error: null }),

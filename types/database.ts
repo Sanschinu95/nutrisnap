@@ -150,6 +150,8 @@ export interface Profile {
   streak_reminders_enabled: boolean | null;
   /** "One day to milestone" / milestone-reached push. */
   milestone_notifications_enabled: boolean | null;
+  /** True once the user has completed or skipped the scan tutorial. */
+  has_seen_scan_tutorial: boolean | null;
   streak_count: number;
   longest_streak: number;
   last_logged_date: string | null;
