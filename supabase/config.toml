@@ -6,3 +6,12 @@ project_id = "nutrisnap"
 
 [functions.coach-chat]
 verify_jwt = true
+
+[functions.scan-analyze]
+verify_jwt = true
+
+[functions.estimate-nutrition]
+verify_jwt = true
+
+[functions.treat-suggestions]
+verify_jwt = true

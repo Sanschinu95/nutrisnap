@@ -1,5 +1,12 @@
 /**
- * Groq hook for food analysis
+ * Groq hook for food analysis.
+ *
+ * Flow after moving Groq server-side:
+ *   1. Upload the image to Cloudinary (client → Cloudinary directly)
+ *   2. Send the resulting URL to `scan-analyze` Edge Function
+ *      → 4 KB request instead of 1 MB base64
+ *   3. If Cloudinary fails or isn't configured (dev), fall back to sending
+ *      the base64 payload to the Edge Function so scanning still works.
  */
 
 import { useState, useCallback } from 'react';
@@ -28,22 +35,15 @@ export function useGroq(): UseGroqReturn {
 
     try {
       const user = useAuthStore.getState().user;
-
-      // Always attempt Cloudinary upload — use 'pending' as placeholder
-      // if the user hasn't authenticated yet. The upload itself only needs
-      // a Cloudinary preset, not a Supabase session.
       const uploadUserId = user?.id ?? 'pending';
-      const uploadPromise = uploadFoodImage(imageUri, uploadUserId).catch(e => {
-        console.error('Cloudinary upload failed:', e);
+
+      // Upload first — the Edge Function then only needs the URL.
+      const cloudinaryUrl = await uploadFoodImage(imageUri, uploadUserId).catch((e) => {
+        console.warn('Cloudinary upload failed, falling back to base64:', e);
         return null;
       });
 
-      const analyzePromise = analyzeFoodWithRetry(image);
-
-      const [cloudinaryUrl, response] = await Promise.all([
-        uploadPromise,
-        analyzePromise,
-      ]);
+      const response = await analyzeFoodWithRetry(image, cloudinaryUrl ?? undefined);
 
       if (isGroqError(response)) {
         setError(response);
@@ -72,11 +72,5 @@ export function useGroq(): UseGroqReturn {
     setIsAnalyzing(false);
   }, []);
 
-  return {
-    isAnalyzing,
-    result,
-    error,
-    analyze,
-    reset,
-  };
+  return { isAnalyzing, result, error, analyze, reset };
 }

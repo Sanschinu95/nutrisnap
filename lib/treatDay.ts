@@ -5,13 +5,12 @@
  * suggestion, not permission to break a diet. Calories are still logged
  * honestly; the coach simply adopts a celebratory tone for the day.
  *
- * Suggestions are AI-generated via Groq (same coach key pool) with a strict
- * JSON output contract; a hard-coded fallback list ships when the API call
- * fails or the JSON parse trips.
+ * Suggestions are AI-generated through the `treat-suggestions` Supabase
+ * Edge Function (keys server-side). A hard-coded fallback list ships when
+ * the function is unreachable or returns an unexpected shape.
  */
 
 import { supabase } from './supabase';
-import { getNextCoachKey, markKeyCooling } from './coachKeyPool';
 import { logSupabaseError } from './supabaseError';
 import type { DietaryPreferences, Profile } from '@/types/database';
 
@@ -37,8 +36,6 @@ export interface TreatDayRow {
   expires_at: string;
 }
 
-const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const COACH_MODEL = 'llama-3.3-70b-versatile';
 const EXPIRY_DAYS = 14;
 
 function todayLocalDate(): string {
@@ -51,70 +48,24 @@ async function generateTreatSuggestions(profile: Profile | null): Promise<TreatS
   const prefs = profile?.dietary_preferences ?? null;
   const goal = profile?.goal_type ?? 'maintain';
 
-  const systemPrompt = `You are generating treat day food suggestions for a NutriSnap user who has been consistent with their nutrition logging for 5 days. They've earned an indulgent treat.
-
-USER CONTEXT:
-- Dietary preferences: ${JSON.stringify(prefs)}
-- Goal: ${goal}
-- Location: India (use Indian foods, ₹ prices, regional context)
-
-GUIDELINES:
-- Suggest 5 indulgent treats. Mix sweet, savory, restaurant items.
-- Make them genuinely indulgent and exciting, not "healthy alternatives."
-- For each: name (specific, e.g., "Gulab jamun" not "Indian sweet"), brief enticing description, estimated calories, an emoji.
-- Include a mix of price points (some ₹50 street food, some ₹500 restaurant items).
-- For vegetarians: only veg suggestions.
-- For non-vegetarians: include some meat/chicken/fish items.
-- Add a pairing tip where natural ("Best with masala chai", "Pair with cold cola").
-
-OUTPUT: ONLY a JSON array. No markdown, no backticks, no explanation. Format:
-[
-  {"name":"Gulab Jamun","description":"Warm syrup-soaked dumplings, melt-in-mouth","category":"sweet","estimated_calories":350,"emoji":"🍮","pairing_tip":"Best slightly warm with vanilla ice cream"}
-]`;
-
-  let key: string;
   try {
-    key = getNextCoachKey();
-  } catch {
-    return getFallbackSuggestions(prefs);
-  }
-
-  try {
-    const response = await fetch(GROQ_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: COACH_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: 'Generate my treat day suggestions.' },
-        ],
-        max_tokens: 800,
-        temperature: 0.8,
-      }),
+    const { data, error } = await supabase.functions.invoke<{
+      suggestions?: TreatSuggestion[];
+      error?: string;
+    }>('treat-suggestions', {
+      body: { dietaryPreferences: prefs, goalType: goal },
     });
-
-    if (response.status === 429) {
-      markKeyCooling(key, 60_000);
+    if (error) {
+      console.warn('treat-suggestions invoke failed:', error);
       return getFallbackSuggestions(prefs);
     }
-    if (!response.ok) {
-      markKeyCooling(key, 30_000);
+    const suggestions = data?.suggestions;
+    if (!Array.isArray(suggestions) || suggestions.length === 0) {
       return getFallbackSuggestions(prefs);
     }
-
-    const data = await response.json();
-    const text: string = data?.choices?.[0]?.message?.content ?? '[]';
-    const clean = text.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(clean);
-    if (!Array.isArray(parsed) || parsed.length === 0) return getFallbackSuggestions(prefs);
-    return parsed
-      .filter((s) => s && typeof s === 'object' && typeof s.name === 'string')
-      .slice(0, 6) as TreatSuggestion[];
-  } catch {
+    return suggestions;
+  } catch (e) {
+    console.warn('treat-suggestions threw:', e);
     return getFallbackSuggestions(prefs);
   }
 }
