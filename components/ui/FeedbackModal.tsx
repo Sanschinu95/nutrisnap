@@ -2,7 +2,7 @@
  * FeedbackModal — daily rating prompt.
  *
  * Displays a card with 5 tappable stars, supportive copy,
- * and submit/dismiss actions. Uses NutriSnap's brand tokens.
+ * and submit/dismiss actions. Uses Nyurix's brand tokens.
  */
 
 import { useCallback, useState } from 'react';
@@ -99,7 +99,7 @@ export function FeedbackModal({ visible, onClose }: FeedbackModalProps) {
                 Thank you! 💚
               </ThemedText>
               <ThemedText variant="body" color={Colors.muted} align="center">
-                Your feedback helps us improve NutriSnap.
+                Your feedback helps us improve Nyurix.
               </ThemedText>
             </Animated.View>
           ) : (
@@ -114,7 +114,7 @@ export function FeedbackModal({ visible, onClose }: FeedbackModalProps) {
 
               {/* Copy */}
               <ThemedText variant="h2" align="center" style={styles.title}>
-                How's NutriSnap treating you?
+                How's Nyurix treating you?
               </ThemedText>
               <ThemedText variant="body" color={Colors.muted} align="center" style={styles.subtitle}>
                 Your honest feedback shapes the next update.

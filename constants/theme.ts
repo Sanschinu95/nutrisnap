@@ -1,5 +1,5 @@
 /**
- * NutriSnap Design System - Theme Constants
+ * Nyurix Design System - Theme Constants
  * All colors, shadows, spacing, and typography tokens
  */
 

@@ -32,7 +32,7 @@ export const ACTIVITY_MULTIPLIERS = {
 } as const;
 
 // Goal calorie adjustments (keys match SQL enum: 'cut', 'maintain', 'bulk')
-export const GOAL_CALORIE_ADJUSTMENTS: Record<import('@/types/archetype').GoalType, number> = {
+export const GOAL_CALORIE_ADJUSTMENTS: Record<import('@/types/profile').GoalType, number> = {
   cut: -500,         // 500 calorie deficit for ~1lb/week loss
   maintain: 0,
   bulk: 300,         // 300 calorie surplus for lean gains

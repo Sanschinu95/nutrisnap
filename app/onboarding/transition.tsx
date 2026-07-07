@@ -8,8 +8,7 @@ import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withTiming } fr
 import { ThemedText } from '@/components/ui/ThemedText';
 import { useUserStore } from '@/stores/user.store';
 import { BorderRadius, Colors, Spacing } from '@/constants/theme';
-import type { ArchetypeKey } from '@/constants/archetypes';
-import type { BiologicalSex, GoalType } from '@/types/archetype';
+import type { BiologicalSex, GoalType, DietStyle } from '@/types/profile';
 import type { UnitPreference } from '@/lib/units';
 
 export default function TransitionScreen() {
@@ -51,7 +50,7 @@ export default function TransitionScreen() {
         goal_weight_kg: goalWeightKg,
         goal_type: (params.goal as GoalType) || 'maintain',
         activity_level: parseInt(params.activityLevel as string, 10) || 3,
-        archetype: (params.archetype as ArchetypeKey) || 'lion',
+        diet_style: (params.dietStyle as DietStyle) || 'balanced',
         unit_preference: unitPreference,
         pace_kg_per_week: paceKgPerWeek,
         medical_conditions: medicalConditions,
@@ -72,7 +71,7 @@ export default function TransitionScreen() {
         <View style={styles.logoMark}>
           <Ionicons name="leaf-outline" size={22} color={Colors.olive} />
         </View>
-        <ThemedText variant="bodySemiBold" color={Colors.olive}>NutriSnap</ThemedText>
+        <ThemedText variant="bodySemiBold" color={Colors.olive}>Nyurix</ThemedText>
       </View>
 
       <Animated.View entering={FadeInDown.springify()} style={styles.content}>
@@ -97,7 +96,7 @@ export default function TransitionScreen() {
       <View style={styles.footer}>
         <Pressable style={styles.ctaButton} onPress={handleBuildPlan} disabled={isSubmitting}>
           <ThemedText variant="button" color="white">
-            {isSubmitting ? 'Preparing...' : 'Enter NutriSnap'}
+            {isSubmitting ? 'Preparing...' : 'Enter Nyurix'}
           </ThemedText>
         </Pressable>
       </View>

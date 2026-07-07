@@ -1,5 +1,5 @@
 /**
- * NutriSnap Coach — single screen with two visual states (landing + chat).
+ * Nyurix Coach — single screen with two visual states (landing + chat).
  *
  * The system prompt for every call is rebuilt fresh via buildCoachContext()
  * so the coach always sees the latest 7-day data, not a snapshot from when
@@ -24,6 +24,7 @@ import * as Haptics from 'expo-haptics';
 import Animated, { FadeIn, FadeInDown, FadeOut } from 'react-native-reanimated';
 import { ThemedText } from '@/components/ui/ThemedText';
 import { TypingIndicator } from '@/components/ui/TypingIndicator';
+import { useShallow } from 'zustand/react/shallow';
 import { useCoachStore, type ChatMessage, type PinnedInsightState } from '@/stores/coach.store';
 import { useUserStore } from '@/stores/user.store';
 import { useAuthStore } from '@/stores/auth.store';
@@ -79,7 +80,23 @@ export default function CoachScreen() {
     loadPersistedState,
     resumeSavedConversation,
     dismissSavedConversation,
-  } = useCoachStore();
+  } = useCoachStore(
+    useShallow((s) => ({
+      messages: s.messages,
+      isLoading: s.isLoading,
+      pinnedInsights: s.pinnedInsights,
+      savedConversation: s.savedConversation,
+      addMessage: s.addMessage,
+      setLoading: s.setLoading,
+      canAskQuestion: s.canAskQuestion,
+      incrementQuestionCount: s.incrementQuestionCount,
+      getRemainingQuestions: s.getRemainingQuestions,
+      pinInsight: s.pinInsight,
+      loadPersistedState: s.loadPersistedState,
+      resumeSavedConversation: s.resumeSavedConversation,
+      dismissSavedConversation: s.dismissSavedConversation,
+    })),
+  );
 
   const [view, setView] = useState<ScreenState>('landing');
   const [systemPrompt, setSystemPrompt] = useState<string>('');

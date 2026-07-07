@@ -5,6 +5,9 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import * as Sharing from 'expo-sharing';
+import { File, Paths } from 'expo-file-system';
+import { useShallow } from 'zustand/react/shallow';
 import { Button } from '@/components/ui/Button';
 import { SkeletonCard } from '@/components/ui/SkeletonLoader';
 import { ThemedText } from '@/components/ui/ThemedText';
@@ -26,9 +29,18 @@ type FeedbackType = UserFeedbackType | null;
 
 export default function ProfileScreen() {
   const { theme } = useTheme();
-  const { profile, streak, isLoading, calorieGoal, updateProfile } = useUserStore();
-  const { entries, waterMl, loadToday } = useDailyStore();
-  const { signOut, user } = useAuthStore();
+  const { profile, streak, isLoading, calorieGoal, updateProfile } = useUserStore(
+    useShallow((s) => ({
+      profile: s.profile, streak: s.streak, isLoading: s.isLoading,
+      calorieGoal: s.calorieGoal, updateProfile: s.updateProfile,
+    })),
+  );
+  const { entries, waterMl, loadToday } = useDailyStore(
+    useShallow((s) => ({ entries: s.entries, waterMl: s.waterMl, loadToday: s.loadToday })),
+  );
+  const { signOut, user } = useAuthStore(
+    useShallow((s) => ({ signOut: s.signOut, user: s.user })),
+  );
   const { requireAuth } = useAuthGate();
   const [feedbackType, setFeedbackType] = useState<FeedbackType>(null);
   const [isExporting, setIsExporting] = useState(false);
@@ -137,10 +149,24 @@ export default function ProfileScreen() {
       try {
         const data = await exportAccountData(user.id);
         const jsonString = JSON.stringify(data, null, 2);
-        await Share.share({
-          title: 'NutriSnap Data Export',
-          message: jsonString,
-        });
+
+        // Write the export to a temp file and share it as an attachment. A
+        // full account dump passed via Share.share({ message }) gets truncated
+        // or rejected by many share targets once it grows past a few KB.
+        const file = new File(Paths.cache, `nyurix-export-${Date.now()}.json`);
+        file.create({ overwrite: true });
+        file.write(jsonString);
+
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(file.uri, {
+            mimeType: 'application/json',
+            dialogTitle: 'Export Nyurix data',
+            UTI: 'public.json',
+          });
+        } else {
+          // Rare fallback for a device with no share provider.
+          await Share.share({ title: 'Nyurix Data Export', message: jsonString });
+        }
       } catch (error) {
         Alert.alert('Export Failed', 'Unable to export your data. Please try again.');
         console.error('Export error:', error);
@@ -303,6 +329,17 @@ export default function ProfileScreen() {
                 updateProfile({
                   streak_reminders_enabled: !(profile.streak_reminders_enabled !== false),
                 });
+              }}
+            />
+            <SettingsRow
+              title="Ghost mode"
+              icon="eye-off-outline"
+              trailing={profile.is_ghost_mode ? 'On' : 'Off'}
+              onPress={() => {
+                Haptics.selectionAsync();
+                const next = !profile.is_ghost_mode;
+                updateProfile({ is_ghost_mode: next });
+                trackEvent(next ? 'ghost_mode_enabled' : 'ghost_mode_disabled', {});
               }}
             />
             <SettingsRow

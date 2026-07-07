@@ -1,0 +1,38 @@
+{
+  "cli": {
+    "version": ">= 12.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://fufwgmmvqolyzqhwaqkx.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ1ZndnbW12cW9seXpxaHdhcWt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzODgzNjYsImV4cCI6MjA4Nzk2NDM2Nn0.V-OlfrS5LuUG2CepgCTtLUsoY4wcJU-pVDWRp3XffS0",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "972714753410-fpubt6genpmatugolj578jaim6gg3tc9.apps.googleusercontent.com",
+        "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "daj95ewga",
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "nutrisnap_mobile"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "distribution": "store",
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://fufwgmmvqolyzqhwaqkx.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ1ZndnbW12cW9seXpxaHdhcWt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzODgzNjYsImV4cCI6MjA4Nzk2NDM2Nn0.V-OlfrS5LuUG2CepgCTtLUsoY4wcJU-pVDWRp3XffS0",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "972714753410-fpubt6genpmatugolj578jaim6gg3tc9.apps.googleusercontent.com",
+        "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "daj95ewga",
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "nutrisnap_mobile"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

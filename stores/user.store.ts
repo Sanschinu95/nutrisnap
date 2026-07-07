@@ -8,15 +8,8 @@ import { supabase } from '@/lib/supabase';
 import { calculateNutritionGoals } from '@/lib/tdee';
 import { calculateNutritionTargets, mapOnboardingActivityToTier, type WeightLogInput } from '@/lib/nutritionEngine';
 import type { DietaryPreferences, Profile } from '@/types/database';
-import type { ArchetypeKey, BiologicalSex, GoalType } from '@/types/archetype';
+import type { BiologicalSex, GoalType, DietStyle } from '@/types/profile';
 import type { MacroGoals } from '@/types/nutrition';
-import type { ArchetypeLevel } from '@/constants/archetypeProgress';
-import {
-  getLevelForProgress,
-  MAX_PROGRESS,
-  GOAL_MET_PROGRESS,
-  GOAL_MISSED_PROGRESS,
-} from '@/constants/archetypeProgress';
 
 interface OnboardingData {
   name: string;
@@ -28,7 +21,7 @@ interface OnboardingData {
   goal_type: GoalType;
   activity_level: number;
   unit_preference?: 'metric' | 'imperial';
-  archetype: ArchetypeKey;
+  diet_style: DietStyle;
   dietary_preferences?: DietaryPreferences;
   pace_kg_per_week?: number | null;
   medical_conditions?: string[];
@@ -36,13 +29,13 @@ interface OnboardingData {
 
 interface UserState {
   profile: Profile | null;
-  archetype: ArchetypeKey | null;
+  dietStyle: DietStyle | null;
+  friendCode: string | null;
+  isGhostMode: boolean;
   calorieGoal: number;
   macroGoals: MacroGoals;
   hydrationGoalMl: number;
   streak: number;
-  archetypeProgress: number;
-  archetypeLevel: ArchetypeLevel;
   isLoading: boolean;
   isGuest: boolean;
   error: string | null;
@@ -53,7 +46,6 @@ interface UserActions {
   updateProfile: (updates: Partial<Profile>) => Promise<void>;
   completeOnboarding: (data: OnboardingData) => Promise<{ success: boolean; error?: string }>;
   updateStreak: () => Promise<void>;
-  updateArchetypeProgress: (goalMet: boolean) => Promise<void>;
   markScanTutorialSeen: (userId: string) => Promise<void>;
   resetScanTutorial: (userId: string) => Promise<void>;
   clearError: () => void;
@@ -67,9 +59,10 @@ const DEFAULT_MACROS: MacroGoals = { protein: 150, carbs: 200, fat: 67 };
 const DEFAULT_HYDRATION_ML = 2500;
 
 function extractGoals(profile: Profile) {
-  const progress = profile.archetype_progress ?? 0;
   return {
-    archetype: profile.archetype ?? null,
+    dietStyle: profile.diet_style ?? null,
+    friendCode: profile.friend_code ?? null,
+    isGhostMode: profile.is_ghost_mode ?? false,
     calorieGoal: profile.calorie_goal ?? DEFAULT_CALORIES,
     macroGoals: {
       protein: profile.protein_goal ?? DEFAULT_MACROS.protein,
@@ -78,8 +71,6 @@ function extractGoals(profile: Profile) {
     },
     hydrationGoalMl: profile.hydration_goal_ml ?? DEFAULT_HYDRATION_ML,
     streak: profile.streak_count ?? 0,
-    archetypeProgress: progress,
-    archetypeLevel: getLevelForProgress(progress).key,
   };
 }
 
@@ -126,13 +117,13 @@ async function buildRecomputedGoalUpdates(profile: Profile): Promise<Partial<Pro
 
 export const useUserStore = create<UserStore>((set, get) => ({
   profile: null,
-  archetype: null,
+  dietStyle: null,
+  friendCode: null,
+  isGhostMode: false,
   calorieGoal: DEFAULT_CALORIES,
   macroGoals: DEFAULT_MACROS,
   hydrationGoalMl: DEFAULT_HYDRATION_ML,
   streak: 0,
-  archetypeProgress: 0,
-  archetypeLevel: 'pup' as ArchetypeLevel,
   isLoading: false,
   isGuest: false,
   error: null,
@@ -253,7 +244,6 @@ export const useUserStore = create<UserStore>((set, get) => ({
         data.age,
         data.biological_sex,
         data.goal_type,
-        data.archetype,
         data.activity_level,
         data.goal_weight_kg,
         [],
@@ -289,10 +279,7 @@ export const useUserStore = create<UserStore>((set, get) => ({
         goal_type: data.goal_type,
         unit_preference: data.unit_preference ?? 'metric',
         activity_tier: mapOnboardingActivityToTier(data.activity_level),
-        archetype: data.archetype,
-        archetype_tier: 'base' as const,
-        archetype_progress: 0,
-        archetype_level: 'pup',
+        diet_style: data.diet_style,
         dietary_preferences: data.dietary_preferences ?? null,
         pace_kg_per_week: data.pace_kg_per_week ?? null,
         medical_conditions: data.medical_conditions ?? [],
@@ -353,38 +340,6 @@ export const useUserStore = create<UserStore>((set, get) => ({
     }
   },
 
-  updateArchetypeProgress: async (goalMet: boolean) => {
-    const { profile } = get();
-    if (!profile) return;
-
-    const increment = goalMet ? GOAL_MET_PROGRESS : GOAL_MISSED_PROGRESS;
-    const newProgress = Math.min(
-      (profile.archetype_progress ?? 0) + increment,
-      MAX_PROGRESS
-    );
-    const newLevel = getLevelForProgress(newProgress);
-
-    const updates = {
-      archetype_progress: newProgress,
-      archetype_level: newLevel.key,
-    };
-
-    set({
-      archetypeProgress: newProgress,
-      archetypeLevel: newLevel.key,
-      profile: { ...profile, ...updates },
-    });
-
-    try {
-      await supabase
-        .from('profiles')
-        .update(updates)
-        .eq('id', profile.id);
-    } catch (error) {
-      console.warn('Archetype progress update failed:', error);
-    }
-  },
-
   markScanTutorialSeen: async (userId: string) => {
     const { profile } = get();
     if (profile) {
@@ -417,13 +372,13 @@ export const useUserStore = create<UserStore>((set, get) => ({
 
   reset: () => set({
     profile: null,
-    archetype: null,
+    dietStyle: null,
+    friendCode: null,
+    isGhostMode: false,
     calorieGoal: DEFAULT_CALORIES,
     macroGoals: DEFAULT_MACROS,
     hydrationGoalMl: DEFAULT_HYDRATION_ML,
     streak: 0,
-    archetypeProgress: 0,
-    archetypeLevel: 'pup' as ArchetypeLevel,
     isLoading: false,
     isGuest: false,
     error: null,

@@ -181,14 +181,14 @@ function MilestoneArtwork({
       <View style={[s.centerCopy, { top: 920 * u }]}>
         <Text style={[s.name, { fontSize: 48 * u }]}>{milestone.name}</Text>
         <Text style={[s.subtitle, { fontSize: 18 * u, marginTop: 12 * u }]}>
-          {milestone.days} days of NutriSnap
+          {milestone.days} days of Nyurix
         </Text>
       </View>
 
       <View style={[s.bottom, { bottom: 220 * u, left: 80 * u, right: 80 * u }]}>
         <Text style={[s.reward, { fontSize: 22 * u }]}>"{milestone.rewardText}"</Text>
         <Text style={[s.wordmark, { fontSize: 22 * u, marginTop: 32 * u, letterSpacing: 4 * u }]}>
-          NUTRISNAP
+          NYURIX
         </Text>
       </View>
     </View>

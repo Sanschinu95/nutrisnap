@@ -3,8 +3,7 @@
  * New logic lives in nutritionEngine.ts and uses SI units internally.
  */
 
-import type { ArchetypeKey } from '@/constants/archetypes';
-import type { BiologicalSex, GoalType } from '@/types/archetype';
+import type { BiologicalSex, GoalType } from '@/types/profile';
 import {
   calculateBmrMifflinStJeor,
   calculateGoalCalorieTarget,
@@ -50,7 +49,6 @@ export function calculateNutritionGoals(
   age: number,
   sex: BiologicalSex,
   goal: GoalType,
-  _archetype: ArchetypeKey,
   activityLevel: number = 1,
   goalWeightKg?: number | null,
   weightLogs: WeightLogInput[] = [],

@@ -4,9 +4,8 @@
  * Takes user profile -> returns a complete PersonalizedPlan
  */
 
-import type { ArchetypeKey } from '@/constants/archetypes';
 import { FOOD_DATABASE, type FoodData } from './foodDatabase';
-import type { GoalType } from '@/types/archetype';
+import type { GoalType, DietStyle } from '@/types/profile';
 import { calculateNutritionTargets, mapOnboardingActivityToTier } from './nutritionEngine';
 
 // ─── Types ───────────────────────────────────────────────────
@@ -20,7 +19,7 @@ export interface PlanEngineInput {
   sex: 'male' | 'female';
   goal_type: GoalType;
   activity_level: ActivityLevel;
-  archetype: ArchetypeKey;
+  diet_style: DietStyle;
 }
 
 export interface FoodSuggestion {
@@ -219,10 +218,11 @@ function buildMealSlot(
 
 // ─── Workout Builder ─────────────────────────────────────────
 
-const PPL_ARCHETYPES: ArchetypeKey[] = ['wolf', 'bear', 'lion', 'tigress', 'swan'];
-const GENTLE_ARCHETYPES: ArchetypeKey[] = ['deer', 'doe', 'phoenix'];
+// Strength-oriented diet styles get a push/pull/legs split on a bulk;
+// the lighter styles get a gentler strength + yoga rotation.
+const PPL_DIET_STYLES: DietStyle[] = ['strength', 'high_protein'];
 
-function buildWorkoutPlan(goalType: GoalType, archetype: ArchetypeKey): WorkoutDay[] {
+function buildWorkoutPlan(goalType: GoalType, dietStyle: DietStyle): WorkoutDay[] {
   if (goalType === 'cut') {
     // Cut: Full body + cardio alternating
     return [
@@ -237,7 +237,7 @@ function buildWorkoutPlan(goalType: GoalType, archetype: ArchetypeKey): WorkoutD
   }
 
   if (goalType === 'bulk') {
-    if (PPL_ARCHETYPES.includes(archetype)) {
+    if (PPL_DIET_STYLES.includes(dietStyle)) {
       return [
         { day: DAYS[0], type: 'Push', exercises: PUSH_EXERCISES },
         { day: DAYS[1], type: 'Pull', exercises: PULL_EXERCISES },
@@ -248,7 +248,7 @@ function buildWorkoutPlan(goalType: GoalType, archetype: ArchetypeKey): WorkoutD
         { day: DAYS[6], type: 'Rest', exercises: [] },
       ];
     }
-    // Gentle archetypes
+    // Lighter diet styles
     return [
       { day: DAYS[0], type: 'Strength', exercises: FULL_BODY_EXERCISES },
       { day: DAYS[1], type: 'Yoga', exercises: YOGA_EXERCISES },
@@ -308,7 +308,7 @@ export function generatePlan(input: PlanEngineInput): PersonalizedPlan {
   }
 
   // 3. Build workout plan
-  const workout_plan = buildWorkoutPlan(input.goal_type, input.archetype);
+  const workout_plan = buildWorkoutPlan(input.goal_type, input.diet_style);
 
   return {
     daily_calories: dailyCalories,

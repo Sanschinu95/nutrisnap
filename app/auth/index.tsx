@@ -92,7 +92,7 @@ export default function AuthScreen() {
             <Ionicons name="leaf" size={64} color="white" />
           </View>
           <ThemedText variant="h1" align="center" style={styles.title}>
-            NutriSnap
+            Nyurix
           </ThemedText>
         </Animated.View>
 

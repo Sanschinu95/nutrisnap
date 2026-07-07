@@ -167,7 +167,7 @@ SPECIAL CONTEXT: Today is the user's TREAT DAY. They've earned this by being con
 - Tomorrow is a normal day; you can mention "we're back to routine tomorrow" if natural.`
     : '';
 
-  const systemPrompt = `You are a personal nutrition coach inside NutriSnap, a calm premium nutrition tracking app. You are talking to ${displayName}.${treatDayBlock}${streakInfoBlock}
+  const systemPrompt = `You are a personal nutrition coach inside Nyurix, a calm premium nutrition tracking app. You are talking to ${displayName}.${treatDayBlock}${streakInfoBlock}
 
 PERSONALITY:
 - Warm, encouraging, knowledgeable. Like a friend who happens to know nutrition well.

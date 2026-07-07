@@ -31,6 +31,7 @@ export type AnalyticsEventName =
   | 'coach_conversation_resumed'
   | 'coach_conversation_dismissed'
   | 'manual_entry_ai_fill'
+  | 'manual_entry_db_fill'
   | 'feedback_submitted'
   | 'treat_day_unlocked'
   | 'treat_day_celebration_dismissed'
@@ -40,7 +41,17 @@ export type AnalyticsEventName =
   | 'streak_milestone_reached'
   | 'streak_milestone_shared'
   | 'streak_milestone_dismissed'
-  | 'streak_reset';
+  | 'streak_reset'
+  | 'friend_code_shared'
+  | 'friend_request_sent'
+  | 'friend_request_accepted'
+  | 'friend_request_declined'
+  | 'friend_removed'
+  | 'leaderboard_viewed'
+  | 'ghost_mode_enabled'
+  | 'ghost_mode_disabled'
+  | 'referral_link_shared'
+  | 'referral_reward_earned';
 
 interface QueuedEvent {
   event_name: AnalyticsEventName;
@@ -52,7 +63,7 @@ interface QueuedEvent {
   platform: string;
 }
 
-const STORAGE_KEY = 'nutrisnap.analytics.queue.v1';
+const STORAGE_KEY = 'nyurix.analytics.queue.v1';
 const FLUSH_THRESHOLD = 8;
 
 function toLocalTimestamp(date = new Date()): string {

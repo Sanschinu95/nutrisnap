@@ -36,8 +36,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { ThemedText } from '@/components/ui/ThemedText';
 import { ScrollWheelPicker, PICKER_GREEN } from '@/components/ui/ScrollWheelPicker';
 import { Colors, BorderRadius, Spacing, Typography } from '@/constants/theme';
-import type { ArchetypeKey } from '@/constants/archetypes';
-import type { BiologicalSex, GoalType } from '@/types/archetype';
+import type { BiologicalSex, GoalType, DietStyle } from '@/types/profile';
 import {
   cmToFeetInches,
   detectDefaultUnit,
@@ -63,16 +62,16 @@ const ACTIVITY_OPTIONS: ActivityOption[] = [
 ];
 
 interface DietOption {
-  key: ArchetypeKey;
+  key: DietStyle;
   title: string;
   desc: string;
   icon: keyof typeof Ionicons.glyphMap;
 }
 const DIET_OPTIONS: DietOption[] = [
-  { key: 'lion', title: 'Balanced', desc: 'A steady mix of protein, carbs, and fats.', icon: 'scale-outline' },
-  { key: 'wolf', title: 'High Protein', desc: 'More protein for strength and recovery.', icon: 'barbell-outline' },
-  { key: 'deer', title: 'Plant Forward', desc: 'Lighter meals with more carbs and plants.', icon: 'leaf-outline' },
-  { key: 'bear', title: 'Strength Fuel', desc: 'More energy for training and growth.', icon: 'fitness-outline' },
+  { key: 'balanced', title: 'Balanced', desc: 'A steady mix of protein, carbs, and fats.', icon: 'scale-outline' },
+  { key: 'high_protein', title: 'High Protein', desc: 'More protein for strength and recovery.', icon: 'barbell-outline' },
+  { key: 'plant_forward', title: 'Plant Forward', desc: 'Lighter meals with more carbs and plants.', icon: 'leaf-outline' },
+  { key: 'strength', title: 'Strength Fuel', desc: 'More energy for training and growth.', icon: 'fitness-outline' },
 ];
 
 const MEDICAL_CONDITIONS = [
@@ -107,7 +106,7 @@ interface StepData {
   /** kg/week (0.25–1.0). Null if goal is maintain. */
   paceKgPerWeek: number | null;
   activityLevel: number | null;
-  archetype: ArchetypeKey | null;
+  dietStyle: DietStyle | null;
   medicalConditions: string[];
 }
 
@@ -127,7 +126,7 @@ export default function OnboardingScreen() {
     goalWeightKg: 70,
     paceKgPerWeek: 0.5,
     activityLevel: null,
-    archetype: null,
+    dietStyle: null,
     medicalConditions: [],
   }));
 
@@ -154,7 +153,7 @@ export default function OnboardingScreen() {
       case 5: return data.goalWeightKg >= 30 && data.goalWeightKg <= 200;
       case 6: return data.paceKgPerWeek !== null;
       case 7: return data.activityLevel !== null;
-      case 8: return data.archetype !== null;
+      case 8: return data.dietStyle !== null;
       case 9: return true; // medical conditions optional
       default: return false;
     }
@@ -189,7 +188,7 @@ export default function OnboardingScreen() {
           paceKgPerWeek: data.paceKgPerWeek == null ? '' : String(data.paceKgPerWeek),
           goal: derivedGoal,
           activityLevel: String(data.activityLevel!),
-          archetype: data.archetype!,
+          dietStyle: data.dietStyle!,
           unitPreference: data.unitPreference,
           medicalConditions: data.medicalConditions.join(','),
         },
@@ -231,7 +230,7 @@ export default function OnboardingScreen() {
         >
           <Animated.View key={step} entering={FadeInDown.duration(220)}>
             {step === 0 && (
-              <Question title="What should we call you?" subtitle="NutriSnap will use this to make the app feel personal.">
+              <Question title="What should we call you?" subtitle="Nyurix will use this to make the app feel personal.">
                 <LargeInput value={data.name} onChangeText={(v) => patch('name', v)} placeholder="Your name" />
               </Question>
             )}
@@ -308,8 +307,8 @@ export default function OnboardingScreen() {
               <Question title="What's your eating style?" subtitle="We'll personalize your nutrition guidance.">
                 <CardList
                   options={DIET_OPTIONS}
-                  selected={data.archetype}
-                  onSelect={(v) => patch('archetype', v as ArchetypeKey)}
+                  selected={data.dietStyle}
+                  onSelect={(v) => patch('dietStyle', v as DietStyle)}
                 />
               </Question>
             )}

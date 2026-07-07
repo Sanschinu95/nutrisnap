@@ -40,7 +40,7 @@ export async function deleteAccountData(
     .eq('user_id', userId)
     .not('image_url', 'is', null);
 
-  // Supabase-storage cleanup. NutriSnap currently uploads scan images to
+  // Supabase-storage cleanup. Nyurix currently uploads scan images to
   // Cloudinary (res.cloudinary.com/...), so storage_paths will normally be
   // empty for current accounts — this is for any meals seeded from the legacy
   // Supabase Storage path. The Cloudinary admin API requires the API secret

@@ -1,7 +1,7 @@
 /**
  * Welcome / Landing screen — single green hero moment.
  *
- * Full-bleed green background, white "NutriSnap" wordmark with animated
+ * Full-bleed green background, white "Nyurix" wordmark with animated
  * entrance, followed by staggered Get Started + Log In buttons.
  */
 
@@ -43,7 +43,7 @@ export default function WelcomeScreen() {
           entering={ZoomIn.duration(700).delay(100)}
           style={styles.wordmark}
         >
-          NutriSnap
+          Nyurix
         </Animated.Text>
         <Animated.Text
           entering={FadeIn.duration(500).delay(600)}

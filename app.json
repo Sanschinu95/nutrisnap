@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "NutriSnap",
-    "slug": "nutrisnap",
+    "name": "Nyurix",
+    "slug": "nutri",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "scheme": "nutrisnap",
+    "scheme": "nyurix",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -14,18 +14,22 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.nutrisnap.app",
+      "bundleIdentifier": "com.nyurix.app",
       "infoPlist": {
-        "NSCameraUsageDescription": "NutriSnap needs camera access to scan and analyze your food",
-        "NSPhotoLibraryUsageDescription": "NutriSnap needs photo library access to analyze food photos",
-        "NSMotionUsageDescription": "NutriSnap uses your phone's step counter to track daily activity. Steps stay on your device.",
-        "LSApplicationQueriesSchemes": ["instagram-stories"]
+        "NSCameraUsageDescription": "Nyurix needs camera access to scan and analyze your food",
+        "NSPhotoLibraryUsageDescription": "Nyurix needs photo library access to analyze food photos",
+        "NSMotionUsageDescription": "Nyurix uses your phone's step counter to track daily activity. Steps stay on your device.",
+        "LSApplicationQueriesSchemes": [
+          "instagram-stories"
+        ]
       }
     },
     "android": {
-      "package": "com.nutrisnap.app",
+      "package": "com.nyurix.app",
       "queries": [
-        { "package": "com.instagram.android" }
+        {
+          "package": "com.instagram.android"
+        }
       ],
       "adaptiveIcon": {
         "backgroundColor": "#F5F0E8",
@@ -39,7 +43,8 @@
         "WRITE_EXTERNAL_STORAGE",
         "VIBRATE",
         "RECEIVE_BOOT_COMPLETED",
-        "android.permission.ACTIVITY_RECOGNITION"
+        "android.permission.ACTIVITY_RECOGNITION",
+        "android.permission.health.READ_STEPS"
       ]
     },
     "web": {
@@ -53,7 +58,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "NutriSnap needs camera access to scan and analyze your food"
+          "cameraPermission": "Nyurix needs camera access to scan and analyze your food"
         }
       ],
       [
@@ -65,15 +70,30 @@
       [
         "expo-media-library",
         {
-          "photosPermission": "NutriSnap needs access to your photo library to save story cards",
-          "savePhotosPermission": "NutriSnap needs permission to save your nutrition story cards",
+          "photosPermission": "Nyurix needs access to your photo library to save story cards",
+          "savePhotosPermission": "Nyurix needs permission to save your nutrition story cards",
           "isAccessMediaLocationEnabled": true
         }
       ],
-      "expo-audio"
+      "expo-audio",
+      "@sentry/react-native",
+      "react-native-health-connect",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "2819942e-894e-4b23-be30-330ba07da68f"
+      }
     }
   }
 }

@@ -13,6 +13,7 @@ import { useUserStore } from './user.store';
 import { useActivityStore } from './activity.store';
 import { useTreatDayStore } from './treatDay.store';
 import { useStreakStore } from './streak.store';
+import { useSocialStore } from './social.store';
 
 type PendingAction = () => Promise<void>;
 
@@ -101,17 +102,27 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           useActivityStore.getState().reset();
           useTreatDayStore.getState().reset();
           useStreakStore.getState().reset();
+          useSocialStore.getState().reset();
           return;
         }
 
         if (userChanged) {
+          // Guest → signed-in "upgrade": prevUserId is null because guests have
+          // no auth user. In that case DON'T reset the user store — its completed
+          // guest profile is exactly what loadProfile() migrates to the new user
+          // id, so the person isn't forced through onboarding a second time.
+          const cameFromGuest = prevUserId === null;
+
           useDailyStore.getState().reset();
-          useUserStore.getState().reset();
           useCoachStore.getState().resetAll();
           useActivityStore.getState().reset();
           useTreatDayStore.getState().reset();
           useStreakStore.getState().reset();
-          // Re-load for new user.
+          useSocialStore.getState().reset();
+          if (!cameFromGuest) {
+            useUserStore.getState().reset();
+          }
+          // Re-load for new user (migrates the guest profile when present).
           useCoachStore.getState().loadPersistedState(nextUserId);
           useUserStore.getState().loadProfile();
           useDailyStore.getState().loadToday();

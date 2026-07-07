@@ -1,5 +1,5 @@
 /**
- * Supabase client for NutriSnap
+ * Supabase client for Nyurix
  * Handles auth, database, and storage
  */
 

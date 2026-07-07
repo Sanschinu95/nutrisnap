@@ -23,6 +23,10 @@ expo-env.d.ts
 metro.log
 metro-error.log
 
+# local build logs
+dev-build.log
+local-apk-build.log
+
 # Dev screenshots at repo root (referenced nowhere; gathered during share-story dev)
 /instagram-fallback.png
 /instagram-result.png
@@ -43,6 +47,10 @@ yarn-error.*
 
 # local env files
 .env*.local
+# server-side secrets (Groq keys etc.) pushed via `supabase secrets set` — never commit
+supabase/.env
+supabase/functions/**/.env
+.env
 
 # typescript
 *.tsbuildinfo

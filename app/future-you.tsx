@@ -58,7 +58,7 @@ export default function FutureYouScreen() {
           {profile?.name ? `${profile.name.split(' ')[0]}, your day is set.` : 'Your day is set.'}
         </ThemedText>
         <ThemedText variant="body" color={Colors.muted} align="center" style={styles.subtitle}>
-          NutriSnap will guide calories, macros, water, and meal rhythm from one calm home screen.
+          Nyurix will guide calories, macros, water, and meal rhythm from one calm home screen.
         </ThemedText>
 
         <View style={styles.calorieCard}>
@@ -80,7 +80,7 @@ export default function FutureYouScreen() {
 
       <View style={styles.footer}>
         <Pressable style={styles.enterButton} onPress={handleEnter}>
-          <ThemedText variant="button" color="white">Enter NutriSnap</ThemedText>
+          <ThemedText variant="button" color="white">Enter Nyurix</ThemedText>
         </Pressable>
       </View>
     </SafeAreaView>

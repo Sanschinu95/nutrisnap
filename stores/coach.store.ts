@@ -57,7 +57,7 @@ interface CoachActions {
 }
 
 const DAILY_LIMIT = 5;
-const STORAGE_PREFIX = 'nutrisnap_coach_state';
+const STORAGE_PREFIX = 'nyurix_coach_state';
 
 function storageKeyFor(userId: string | null): string {
   return userId ? `${STORAGE_PREFIX}_${userId}` : `${STORAGE_PREFIX}_anon`;

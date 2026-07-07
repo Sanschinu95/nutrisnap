@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -15,6 +15,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { ThemedText } from '@/components/ui/ThemedText';
 import { ScrollWheelPicker, PICKER_GREEN } from '@/components/ui/ScrollWheelPicker';
 import { format12h, formatDuration } from '@/components/ui/StepsSleepRow';
+import { useShallow } from 'zustand/react/shallow';
 import { useAuthStore } from '@/stores/auth.store';
 import { useActivityStore } from '@/stores/activity.store';
 import { supabase } from '@/lib/supabase';
@@ -31,6 +32,7 @@ interface NightRow {
 }
 
 export default function SleepDetailScreen() {
+  const insets = useSafeAreaInsets();
   const userId = useAuthStore((s) => s.user?.id ?? null);
   const {
     lastNightSleep,
@@ -39,7 +41,16 @@ export default function SleepDetailScreen() {
     sleepGoalHours,
     updateSleepSchedule,
     editAndConfirmSleep,
-  } = useActivityStore();
+  } = useActivityStore(
+    useShallow((s) => ({
+      lastNightSleep: s.lastNightSleep,
+      regularSleepTime: s.regularSleepTime,
+      regularWakeTime: s.regularWakeTime,
+      sleepGoalHours: s.sleepGoalHours,
+      updateSleepSchedule: s.updateSleepSchedule,
+      editAndConfirmSleep: s.editAndConfirmSleep,
+    })),
+  );
 
   const initSleepHHMM = lastNightSleep ? formatHHMM(lastNightSleep.sleepTime) : regularSleepTime;
   const initWakeHHMM = lastNightSleep ? formatHHMM(lastNightSleep.wakeTime) : regularWakeTime;
@@ -99,20 +110,20 @@ export default function SleepDetailScreen() {
   const logTonight = useCallback(async () => {
     if (!userId) return;
     Haptics.selectionAsync();
-    const today = new Date();
     const [sh, sm] = sleepHHMM.split(':').map(Number);
     const [wh, wm] = wakeHHMM.split(':').map(Number);
-    const sleepTime = new Date(today);
-    sleepTime.setDate(sleepTime.getDate() - 1);
+    // Both anchored to today; the store normalizes the night (handles sleeping
+    // after midnight), so no manual day offset here.
+    const sleepTime = new Date();
     sleepTime.setHours(sh, sm, 0, 0);
-    const wakeTime = new Date(today);
+    const wakeTime = new Date();
     wakeTime.setHours(wh, wm, 0, 0);
     await editAndConfirmSleep(userId, sleepTime, wakeTime);
     router.back();
   }, [userId, sleepHHMM, wakeHHMM, editAndConfirmSleep]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Pressable style={styles.iconBtn} onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={22} color="#5a4f45" />
@@ -121,7 +132,10 @@ export default function SleepDetailScreen() {
         <View style={styles.iconBtn} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingBottom: 40 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+      >
         <Animated.View entering={FadeInDown.duration(240)} style={styles.hero}>
           <View style={styles.moonWrap}>
             <Ionicons name="moon" size={22} color={SLEEP_COLOR} />

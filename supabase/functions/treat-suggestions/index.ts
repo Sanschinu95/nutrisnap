@@ -52,7 +52,7 @@ function markCooling(key: string, ms: number) {
 }
 
 function buildSystemPrompt(prefs: unknown, goal: string): string {
-  return `You are generating treat day food suggestions for a NutriSnap user who has been consistent with their nutrition logging for 5 days. They've earned an indulgent treat.
+  return `You are generating treat day food suggestions for a Nyurix user who has been consistent with their nutrition logging for 5 days. They've earned an indulgent treat.
 
 USER CONTEXT:
 - Dietary preferences: ${JSON.stringify(prefs)}

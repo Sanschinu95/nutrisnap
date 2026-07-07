@@ -12,6 +12,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { ThemedText } from '@/components/ui/ThemedText';
+import { useShallow } from 'zustand/react/shallow';
 import { useActivityStore } from '@/stores/activity.store';
 import { Colors, Typography } from '@/constants/theme';
 
@@ -28,7 +29,16 @@ export function StepsSleepRow() {
     lastNightSleep,
     sleepGoalHours,
     sleepSheetOpenRequest,
-  } = useActivityStore();
+  } = useActivityStore(
+    useShallow((s) => ({
+      todaySteps: s.todaySteps,
+      stepGoal: s.stepGoal,
+      stepPermissionGranted: s.stepPermissionGranted,
+      lastNightSleep: s.lastNightSleep,
+      sleepGoalHours: s.sleepGoalHours,
+      sleepSheetOpenRequest: s.sleepSheetOpenRequest,
+    })),
+  );
 
   // Route on ACTUAL request increments only. A useEffect that just checks
   // `sleepSheetOpenRequest > 0` also fires on remount, which would open the

@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
   hero: { alignItems: 'center', gap: 4, paddingTop: 12 },
   bigNumber: {
     fontSize: 64,
-    fontFamily: Typography.fonts.serif,
+    fontFamily: Typography.fonts.headingBold,
     fontWeight: '500',
     color: '#2F241E',
     lineHeight: 70,
@@ -267,7 +267,7 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 18,
     color: '#2F241E',
-    fontFamily: Typography.fonts.serif,
+    fontFamily: Typography.fonts.headingBold,
     fontWeight: '500',
   },
   statLabel: {
@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
 
   sectionTitle: {
     fontSize: 18,
-    fontFamily: Typography.fonts.serif,
+    fontFamily: Typography.fonts.headingBold,
     fontWeight: '500',
     color: '#2F241E',
   },
@@ -300,8 +300,7 @@ const styles = StyleSheet.create({
   consistency: {
     fontSize: 14,
     color: '#5a4f45',
-    fontStyle: 'italic',
-    fontFamily: Typography.fonts.serif,
+    fontFamily: Typography.fonts.body,
     textAlign: 'center',
     paddingHorizontal: 12,
   },
@@ -309,7 +308,7 @@ const styles = StyleSheet.create({
   emptyHero: { alignItems: 'center', gap: 12, paddingTop: 60 },
   emptyTitle: {
     fontSize: 22,
-    fontFamily: Typography.fonts.serif,
+    fontFamily: Typography.fonts.headingBold,
     fontWeight: '500',
     color: '#2F241E',
     textAlign: 'center',
@@ -343,15 +342,14 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 20,
-    fontFamily: Typography.fonts.serif,
+    fontFamily: Typography.fonts.headingBold,
     fontWeight: '500',
     color: '#2F241E',
   },
   modalDesc: { fontSize: 13, color: '#8a7e74', textAlign: 'center' },
   modalReward: {
     fontSize: 14,
-    fontFamily: Typography.fonts.serif,
-    fontStyle: 'italic',
+    fontFamily: Typography.fonts.body,
     color: '#5a4f45',
     textAlign: 'center',
     marginTop: 4,

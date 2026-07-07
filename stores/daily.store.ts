@@ -314,7 +314,7 @@ export const useDailyStore = create<DailyStore>((set, get) => ({
 
       // ─── Progress tracking & notifications ────────────────
       try {
-        const { calorieGoal, archetype, streak } = useUserStore.getState();
+        const { calorieGoal } = useUserStore.getState();
         const calorieProgress = calorieGoal > 0 ? newSummary.total_calories / calorieGoal : 0;
         const { progressNotified } = get();
 
@@ -322,23 +322,21 @@ export const useDailyStore = create<DailyStore>((set, get) => ({
         const fired = await checkAndSendProgressNotification(
           newSummary.total_calories,
           calorieGoal,
-          archetype,
           progressNotified
         );
         if (Object.keys(fired).length > 0) {
           set({ progressNotified: { ...progressNotified, ...fired } });
         }
 
-        // Goal hit: fire notification + update archetype progress
+        // Goal hit: fire notification + update streak
         if (calorieProgress >= 1.0 && !progressNotified.goalHit) {
-          await sendGoalHitNotification(archetype);
+          await sendGoalHitNotification();
           set({ progressNotified: { ...get().progressNotified, goalHit: true } });
-          await useUserStore.getState().updateArchetypeProgress(true);
 
           // Also update streak and check for milestone
           await useUserStore.getState().updateStreak();
           const newStreak = useUserStore.getState().streak;
-          await sendStreakNotification(newStreak, archetype);
+          await sendStreakNotification(newStreak);
         }
       } catch (notifError) {
         // Don't fail the entry add if notifications fail

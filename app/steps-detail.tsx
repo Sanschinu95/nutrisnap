@@ -14,6 +14,7 @@ import Svg, { Line, Rect, Text as SvgText } from 'react-native-svg';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { ThemedText } from '@/components/ui/ThemedText';
 import { ScrollWheelPicker, PICKER_GREEN } from '@/components/ui/ScrollWheelPicker';
+import { useShallow } from 'zustand/react/shallow';
 import { useAuthStore } from '@/stores/auth.store';
 import { useActivityStore } from '@/stores/activity.store';
 import { supabase } from '@/lib/supabase';
@@ -31,7 +32,9 @@ interface DayRow {
 
 export default function StepsDetailScreen() {
   const userId = useAuthStore((s) => s.user?.id ?? null);
-  const { todaySteps, stepGoal, setStepGoal } = useActivityStore();
+  const { todaySteps, stepGoal, setStepGoal } = useActivityStore(
+    useShallow((s) => ({ todaySteps: s.todaySteps, stepGoal: s.stepGoal, setStepGoal: s.setStepGoal })),
+  );
   const [history, setHistory] = useState<DayRow[]>([]);
   const [editing, setEditing] = useState(false);
   const [tmpGoal, setTmpGoal] = useState(stepGoal);

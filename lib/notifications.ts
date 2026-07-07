@@ -1,13 +1,11 @@
 /**
- * Notification service for NutriSnap
- * Handles expo-notifications initialization, scheduling, and archetype-based messaging
+ * Notification service for Nyurix
+ * Handles expo-notifications initialization, scheduling, and reminder messaging
  */
 
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { router } from 'expo-router';
-import type { ArchetypeKey } from '@/types/archetype';
-import { STREAK_MILESTONES } from '@/constants/archetypeProgress';
 import { trackEvent } from './telemetry';
 
 // ─── Notification Channel IDs ───────────────────────────────────
@@ -30,8 +28,8 @@ export const HYDRATION_ACTIONS = {
   OTHER: 'hydration-other',
 } as const;
 
-// ─── Archetype Notification Messages ────────────────────────────
-interface ArchetypeMessages {
+// ─── Reminder Messages ──────────────────────────────────────────
+interface ReminderMessages {
   meal: string;
   streak: string;
   goal: string;
@@ -40,75 +38,7 @@ interface ArchetypeMessages {
   nearComplete: string;
 }
 
-export const ARCHETYPE_MESSAGES: Record<ArchetypeKey, ArchetypeMessages> = {
-  wolf: {
-    meal: "Time to hunt 🐺 Your next meal fuels the Wolf.",
-    streak: "The Wolf pack respects consistency. Keep the streak alive.",
-    goal: "Goal achieved. The Wolf hunts with precision. 🎯",
-    midday: "You haven't logged yet — the Wolf doesn't skip meals.",
-    almostThere: "You're 70% there. Stay locked in, hunter.",
-    nearComplete: "One meal away from hitting goal. Finish the hunt.",
-  },
-  bear: {
-    meal: "Feed the Bear 🐻 Balanced meals build raw power.",
-    streak: "Bears are consistent. Your streak proves your strength.",
-    goal: "Goal smashed. That's Bear-level discipline. 💪",
-    midday: "No logs yet today — Bears don't hibernate on nutrition.",
-    almostThere: "You're cruising at 70%. Keep fueling the engine.",
-    nearComplete: "Almost there — one more meal seals the deal.",
-  },
-  lion: {
-    meal: "The King eats 🦁 Command your nutrition today.",
-    streak: "The pride follows your lead. Streak secured.",
-    goal: "Goal achieved. A Lion never wavers. 👑",
-    midday: "No logs yet — a Lion leads by example.",
-    almostThere: "70% done. Maintain your royal composure.",
-    nearComplete: "One meal from the crown. Finish strong.",
-  },
-  deer: {
-    meal: "Time for clean fuel 🦌 Nourish the runner.",
-    streak: "Keep running, keep logging. Your streak is your path.",
-    goal: "Goal met. Graceful and consistent. 🌿",
-    midday: "You haven't logged yet — stay on the trail.",
-    almostThere: "You're 70% there. Keep your pace steady.",
-    nearComplete: "Almost at the finish line. One more meal.",
-  },
-  tigress: {
-    meal: "Fuel the fire 🐯 The Tigress needs protein.",
-    streak: "Fierce and consistent — your streak is unbreakable.",
-    goal: "Goal crushed. That's pure Tigress energy. 🔥",
-    midday: "No logs yet — the Tigress never sleeps on nutrition.",
-    almostThere: "70% there. Stay fierce, stay focused.",
-    nearComplete: "One meal away. Finish with ferocity.",
-  },
-  phoenix: {
-    meal: "Rise and fuel 🔥 Every meal is transformation.",
-    streak: "The flame burns brighter with every streak day.",
-    goal: "Goal achieved. You are transforming. ✨",
-    midday: "No logs yet — don't let the flame die today.",
-    almostThere: "70% there. The fire is building.",
-    nearComplete: "One meal from rebirth. Keep going.",
-  },
-  doe: {
-    meal: "Mindful nourishment 🦌 Feed your graceful soul.",
-    streak: "Consistency is grace in action. Beautiful streak.",
-    goal: "Goal met. Graceful and intentional. 🌸",
-    midday: "No logs yet — nourish yourself mindfully today.",
-    almostThere: "70% there. Keep flowing naturally.",
-    nearComplete: "Almost complete. One gentle step left.",
-  },
-  swan: {
-    meal: "Nourish your elegance 🦢 The Swan glides on clean fuel.",
-    streak: "Swans never lose their grace. Your streak is beautiful.",
-    goal: "Goal achieved. Elegant and disciplined. 🦢",
-    midday: "No logs yet — the Swan stays poised even at midday.",
-    almostThere: "70% there. Glide through the rest with grace.",
-    nearComplete: "One meal from perfection. Finish gracefully.",
-  },
-};
-
-// ─── Default messages (no archetype selected) ───────────────────
-const DEFAULT_MESSAGES: ArchetypeMessages = {
+const DEFAULT_MESSAGES: ReminderMessages = {
   meal: "Time to eat! Don't forget to log your meal.",
   streak: "Your streak is going strong. Keep it up!",
   goal: "Daily goal achieved. Great job! 🎉",
@@ -116,6 +46,9 @@ const DEFAULT_MESSAGES: ArchetypeMessages = {
   almostThere: "You're almost there. Stay consistent.",
   nearComplete: "One meal away from hitting your goal.",
 };
+
+/** Streak day-counts that trigger a milestone notification. */
+const STREAK_MILESTONES = [7, 14, 30, 60, 90] as const;
 
 // ─── Water Reminder Config ──────────────────────────────────────
 const WATER_REMINDER_START_HOUR = 8;
@@ -216,17 +149,15 @@ export async function initializeNotifications(): Promise<boolean> {
  * Schedule a daily repeating meal reminder at user-selected time.
  * @param hour - Hour (0-23)
  * @param minute - Minute (0-59)
- * @param archetype - User's archetype for personalized message
  */
 export async function scheduleMealReminder(
   hour: number,
   minute: number,
-  archetype?: ArchetypeKey | null
 ): Promise<string> {
   // Cancel existing meal reminders first
   await cancelMealReminders();
 
-  const messages = archetype ? ARCHETYPE_MESSAGES[archetype] : DEFAULT_MESSAGES;
+  const messages = DEFAULT_MESSAGES;
 
   const id = await Notifications.scheduleNotificationAsync({
     content: {
@@ -372,7 +303,7 @@ export async function sendTreatDayUnlockNotification(): Promise<void> {
     await Notifications.scheduleNotificationAsync({
       content: {
         title: "You've earned a treat day",
-        body: '5 days of consistency. Open NutriSnap to see your suggestions.',
+        body: '5 days of consistency. Open Nyurix to see your suggestions.',
         data: { type: 'treat_day_unlocked' },
         ...(Platform.OS === 'android' && {
           channelId: NOTIFICATION_CHANNELS.GOAL_HIT,
@@ -388,8 +319,8 @@ export async function sendTreatDayUnlockNotification(): Promise<void> {
 /**
  * Fire a notification when user hits their daily calorie goal.
  */
-export async function sendGoalHitNotification(archetype?: ArchetypeKey | null): Promise<void> {
-  const messages = archetype ? ARCHETYPE_MESSAGES[archetype] : DEFAULT_MESSAGES;
+export async function sendGoalHitNotification(): Promise<void> {
+  const messages = DEFAULT_MESSAGES;
 
   await Notifications.scheduleNotificationAsync({
     content: {
@@ -409,12 +340,11 @@ export async function sendGoalHitNotification(archetype?: ArchetypeKey | null): 
  */
 export async function sendStreakNotification(
   streakDays: number,
-  archetype?: ArchetypeKey | null
 ): Promise<void> {
   // Only fire for milestone days
   if (!STREAK_MILESTONES.includes(streakDays as typeof STREAK_MILESTONES[number])) return;
 
-  const messages = archetype ? ARCHETYPE_MESSAGES[archetype] : DEFAULT_MESSAGES;
+  const messages = DEFAULT_MESSAGES;
 
   await Notifications.scheduleNotificationAsync({
     content: {
@@ -438,12 +368,11 @@ export async function sendStreakNotification(
 export async function checkAndSendProgressNotification(
   currentCalories: number,
   goalCalories: number,
-  archetype?: ArchetypeKey | null,
   alreadyNotified?: { midday?: boolean; almostThere?: boolean; nearComplete?: boolean }
 ): Promise<{ midday?: boolean; almostThere?: boolean; nearComplete?: boolean }> {
   if (goalCalories <= 0) return {};
 
-  const messages = archetype ? ARCHETYPE_MESSAGES[archetype] : DEFAULT_MESSAGES;
+  const messages = DEFAULT_MESSAGES;
   const progress = currentCalories / goalCalories;
   const hour = new Date().getHours();
   const fired: { midday?: boolean; almostThere?: boolean; nearComplete?: boolean } = {};

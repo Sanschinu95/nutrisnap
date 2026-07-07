@@ -12,8 +12,8 @@ import { supabase } from './supabase';
 import { useAuthStore } from '@/stores/auth.store';
 import { logSupabaseError } from './supabaseError';
 
-const FEEDBACK_DATE_KEY = 'nutrisnap_last_feedback_date';
-const FEEDBACK_PERMANENT_KEY = 'nutrisnap_feedback_submitted';
+const FEEDBACK_DATE_KEY = 'nyurix_last_feedback_date';
+const FEEDBACK_PERMANENT_KEY = 'nyurix_feedback_submitted';
 
 export interface FeedbackPayload {
   rating: number; // 1-5

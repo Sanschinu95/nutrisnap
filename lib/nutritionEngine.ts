@@ -1,4 +1,4 @@
-import type { BiologicalSex, GoalType } from '@/types/archetype';
+import type { BiologicalSex, GoalType } from '@/types/profile';
 
 export type UnitPreference = 'metric' | 'imperial';
 export type ActivityTier = 'low' | 'moderate' | 'high';

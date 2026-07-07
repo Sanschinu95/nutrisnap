@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Image, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
@@ -23,14 +24,34 @@ import { hasSeenScanTutorialInSession, useUserStore } from '@/stores/user.store'
 import { BorderRadius, Colors, Spacing } from '@/constants/theme';
 import { trackEvent } from '@/lib/telemetry';
 import { useChartSound } from '@/hooks/useChartSound';
+import { useAuthGate } from '@/hooks/useAuthGate';
+
+/**
+ * Save a captured scan to the device gallery. Best-effort: requests permission
+ * (only prompts the first time), and swallows any failure so it can never
+ * interrupt the scan flow.
+ */
+async function saveScanToGallery(uri: string): Promise<void> {
+  try {
+    const perm = await MediaLibrary.requestPermissionsAsync();
+    if (!perm.granted) return;
+    await MediaLibrary.saveToLibraryAsync(uri);
+  } catch (e) {
+    console.warn('[Camera] save to gallery failed:', e);
+  }
+}
 
 export default function CameraScreen() {
   const { theme } = useTheme();
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
   const { isAnalyzing, result, error, analyze, reset } = useGroq();
-  const { loadToday } = useDailyStore();
+  const loadToday = useDailyStore((s) => s.loadToday);
   const { playTap } = useChartSound();
+  // Scanning hits an authenticated Edge Function, so a guest can't complete a
+  // scan. Gate the capture/gallery entry points: guests see the sign-in sheet
+  // up front instead of burning an upload and hitting a vague "Scan failed".
+  const { requireAuth } = useAuthGate();
   const [manualOpen, setManualOpen] = useState(false);
   const [manualName, setManualName] = useState('');
   const [manualCalories, setManualCalories] = useState('');
@@ -81,30 +102,39 @@ export default function CameraScreen() {
     await analyze({ base64, mimeType }, uri);
   };
 
-  const handleCapture = async () => {
+  const handleCapture = () => {
     if (!cameraRef.current || isAnalyzing) return;
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      playTap();
-      await trackEvent('scan_started', { source: 'camera' });
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.82, base64: true });
-      if (photo?.base64 && photo.uri) await runAnalyze(photo.base64, photo.uri);
-    } catch (e) {
-      console.error('Capture error:', e);
-      Alert.alert('Scan failed', 'Please try again in better light.');
-    }
+    requireAuth(async () => {
+      if (!cameraRef.current) return;
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        playTap();
+        await trackEvent('scan_started', { source: 'camera' });
+        const photo = await cameraRef.current.takePictureAsync({ quality: 0.82, base64: true });
+        // Save the snap to the user's gallery too (fire-and-forget so it never
+        // blocks or fails the scan). Gallery picks are already in the gallery,
+        // so this only applies to camera captures.
+        if (photo?.uri) saveScanToGallery(photo.uri);
+        if (photo?.base64 && photo.uri) await runAnalyze(photo.base64, photo.uri);
+      } catch (e) {
+        console.error('Capture error:', e);
+        Alert.alert('Scan failed', 'Please try again in better light.');
+      }
+    });
   };
 
-  const handleGalleryPick = async () => {
-    const pickerResult = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.82,
-      base64: true,
+  const handleGalleryPick = () => {
+    requireAuth(async () => {
+      const pickerResult = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.82,
+        base64: true,
+      });
+      if (!pickerResult.canceled && pickerResult.assets[0]?.base64) {
+        await trackEvent('scan_started', { source: 'gallery' });
+        await runAnalyze(pickerResult.assets[0].base64, pickerResult.assets[0].uri);
+      }
     });
-    if (!pickerResult.canceled && pickerResult.assets[0]?.base64) {
-      await trackEvent('scan_started', { source: 'gallery' });
-      await runAnalyze(pickerResult.assets[0].base64, pickerResult.assets[0].uri);
-    }
   };
 
   const handleConfirm = (feedback?: 'incorrect') => {
@@ -172,7 +202,7 @@ export default function CameraScreen() {
           Camera Access
         </ThemedText>
         <ThemedText variant="body" color={theme.textMuted} align="center" style={styles.permissionText}>
-          Scan meals instantly by allowing NutriSnap to use the camera.
+          Scan meals instantly by allowing Nyurix to use the camera.
         </ThemedText>
         <Button title="Enable Camera" onPress={requestPermission} size="large" />
       </View>

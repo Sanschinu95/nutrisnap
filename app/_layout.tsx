@@ -1,5 +1,5 @@
 /**
- * Root layout for NutriSnap
+ * Root layout for Nyurix
  * Loads fonts, initializes auth, and guards routes
  */
 
@@ -41,14 +41,47 @@ import { useActivityStore } from '@/stores/activity.store';
 import { useTreatDayStore } from '@/stores/treatDay.store';
 import { useStreakStore } from '@/stores/streak.store';
 import { initializeNotifications, scheduleWaterReminders, scheduleMealReminder, scheduleCoachWeeklyReview } from '@/lib/notifications';
+import * as Sentry from '@sentry/react-native';
+
+// ─── Crash & error reporting ────────────────────────────────────
+// Initialized only when a DSN is configured, so dev builds without one stay
+// quiet. sendDefaultPii:false plus the beforeSend scrubber keep health data
+// (weight, medical conditions carried in profile/coach payloads) out of every
+// report — important because this app handles sensitive data.
+const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
+if (SENTRY_DSN) {
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    // Never attach IP address, cookies, or default user identifiers.
+    sendDefaultPii: false,
+    // Sample a fraction of transactions for performance monitoring.
+    tracesSampleRate: 0.2,
+    // Strip anything that could carry personal / health data before it leaves
+    // the device.
+    beforeSend(event) {
+      if (event.user) {
+        // Keep only an opaque id (if present); drop email / ip / username.
+        event.user = event.user.id ? { id: event.user.id } : {};
+      }
+      if (event.request) {
+        delete event.request.data;
+        delete event.request.cookies;
+        delete event.request.headers;
+      }
+      return event;
+    },
+  });
+}
 
 // Keep splash screen visible while we load resources
 SplashScreen.preventAutoHideAsync();
 
 function useProtectedRoute() {
   const segments = useSegments();
-  const { session, isInitialized } = useAuthStore();
-  const { profile, isGuest } = useUserStore();
+  const session = useAuthStore((s) => s.session);
+  const isInitialized = useAuthStore((s) => s.isInitialized);
+  const profile = useUserStore((s) => s.profile);
+  const isGuest = useUserStore((s) => s.isGuest);
 
   useEffect(() => {
     if (!isInitialized) return;
@@ -72,6 +105,7 @@ function useProtectedRoute() {
       segment0 === 'steps-detail' ||
       segment0 === 'streak-detail' ||
       segment0 === 'treat-day' ||
+      segment0 === 'friends' ||
       segment0 === 'milestone-share';
     const isWelcome = !inAuthGroup && !inOnboarding && !inFutureYou && !inTabs && !inAppScreen;
 
@@ -100,7 +134,7 @@ function useProtectedRoute() {
   }, [session, isInitialized, profile, isGuest, segments]);
 }
 
-export default function RootLayout() {
+function RootLayout() {
   const { theme } = useTheme();
   const [appIsReady, setAppIsReady] = useState(false);
   const initialize = useAuthStore((s) => s.initialize);
@@ -143,10 +177,9 @@ export default function RootLayout() {
       const granted = await initializeNotifications();
       if (granted) {
         // Schedule default reminders
-        const { archetype } = useUserStore.getState();
         await scheduleWaterReminders();
         // Default meal reminder at 12:00 PM
-        await scheduleMealReminder(12, 0, archetype);
+        await scheduleMealReminder(12, 0);
         // Sunday 8 PM coach weekly review
         await scheduleCoachWeeklyReview();
       }
@@ -209,6 +242,7 @@ export default function RootLayout() {
         <Stack.Screen name="onboarding/transition" />
         <Stack.Screen name="sleep-detail" />
         <Stack.Screen name="steps-detail" />
+        <Stack.Screen name="friends" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen
           name="future-you"
@@ -259,3 +293,7 @@ const styles = StyleSheet.create({
   },
 
 });
+
+// Sentry.wrap adds the crash-reporting error boundary + touch/navigation
+// context. Safe no-op when Sentry isn't initialized (no DSN configured).
+export default Sentry.wrap(RootLayout);

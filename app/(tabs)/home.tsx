@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import { useShallow } from 'zustand/react/shallow';
 import BottomSheet, { BottomSheetView } from '@gorhom/bottom-sheet';
 import { ThemedText } from '@/components/ui/ThemedText';
 import { CalorieRing } from '@/components/ui/CalorieRing';
@@ -97,16 +98,26 @@ function getInitials(name?: string | null): string {
 
 const METRIC_CONFIG: Record<RingMetric, { label: string; color: string }> = {
   calories: { label: 'Calories Left', color: Colors.olive },
-  protein: { label: 'Protein', color: Colors.olive },
-  carbs: { label: 'Carbs', color: Colors.orange },
-  fat: { label: 'Fat', color: Colors.brownMid },
+  protein: { label: 'Protein Left', color: Colors.olive },
+  carbs: { label: 'Carbs Left', color: Colors.orange },
+  fat: { label: 'Fat Left', color: Colors.brownMid },
 };
 
 export default function HomeScreen() {
   const { theme } = useTheme();
-  const { profile, calorieGoal, macroGoals, streak, hydrationGoalMl } = useUserStore();
+  const { profile, calorieGoal, macroGoals, streak, hydrationGoalMl } = useUserStore(
+    useShallow((s) => ({
+      profile: s.profile, calorieGoal: s.calorieGoal, macroGoals: s.macroGoals,
+      streak: s.streak, hydrationGoalMl: s.hydrationGoalMl,
+    })),
+  );
   const userId = useAuthStore((s) => s.user?.id ?? null);
-  const { entries, summary, waterMl, addWater, removeEntry, loadToday } = useDailyStore();
+  const { entries, summary, waterMl, addWater, removeEntry, loadToday } = useDailyStore(
+    useShallow((s) => ({
+      entries: s.entries, summary: s.summary, waterMl: s.waterMl,
+      addWater: s.addWater, removeEntry: s.removeEntry, loadToday: s.loadToday,
+    })),
+  );
   const { requireAuth } = useAuthGate();
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
 
@@ -190,12 +201,18 @@ export default function HomeScreen() {
     [entries, hydrationProgress, proteinProgress, todaySteps, stepGoal, sleepMinutes, sleepGoalMinutes],
   );
 
+  // All metrics report the amount *remaining* to the goal, so the ring center
+  // reads consistently ("X Left") whether calories or a macro is selected.
+  const proteinLeft = Math.max(0, Math.round(macroGoals.protein - totalProtein));
+  const carbsLeft = Math.max(0, Math.round(macroGoals.carbs - totalCarbs));
+  const fatLeft = Math.max(0, Math.round(macroGoals.fat - totalFat));
+
   // Build ring + row data based on which metric is active
   const metricData: Record<RingMetric, { value: string; progress: number }> = {
     calories: { value: caloriesLeft.toLocaleString(), progress: calProgress },
-    protein: { value: `${Math.round(totalProtein)}g`, progress: proteinProgress },
-    carbs: { value: `${Math.round(totalCarbs)}g`, progress: carbsProgress },
-    fat: { value: `${Math.round(totalFat)}g`, progress: fatProgress },
+    protein: { value: `${proteinLeft}g`, progress: proteinProgress },
+    carbs: { value: `${carbsLeft}g`, progress: carbsProgress },
+    fat: { value: `${fatLeft}g`, progress: fatProgress },
   };
 
   const activeConfig = METRIC_CONFIG[activeRingMetric];
@@ -303,15 +320,20 @@ export default function HomeScreen() {
               Your nutrition journey continues today.
             </ThemedText>
           </View>
-          <Pressable style={styles.avatarButton} onPress={() => router.push('/(tabs)/profile')}>
-            {avatarUri ? (
-              <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
-            ) : (
-              <ThemedText variant="bodySemiBold" color="white">
-                {getInitials(profile.name)}
-              </ThemedText>
-            )}
-          </Pressable>
+          <View style={styles.headerActions}>
+            <Pressable style={styles.friendsButton} onPress={() => router.push('/friends' as any)} accessibilityLabel="Friends">
+              <Ionicons name="people-outline" size={22} color={Colors.brown} />
+            </Pressable>
+            <Pressable style={styles.avatarButton} onPress={() => router.push('/(tabs)/profile')}>
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+              ) : (
+                <ThemedText variant="bodySemiBold" color="white">
+                  {getInitials(profile.name)}
+                </ThemedText>
+              )}
+            </Pressable>
+          </View>
         </Animated.View>
 
         {(treatAvailable || treatActiveToday) && (
@@ -355,7 +377,7 @@ export default function HomeScreen() {
                   <MacroRow
                     key={metric}
                     label={config.label}
-                    value={metric === 'calories' ? `${totalCalories} cal` : data.value}
+                    value={data.value}
                     progress={data.progress}
                     color={config.color}
                     onPress={() => handleSwapMetric(metric)}
@@ -572,6 +594,19 @@ const styles = StyleSheet.create({
   greeting: {
     fontSize: 30,
     lineHeight: 36,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  friendsButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
   },
   avatarButton: {
     width: 48,

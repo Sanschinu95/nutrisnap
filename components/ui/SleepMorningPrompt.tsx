@@ -12,6 +12,7 @@ import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { ThemedText } from '@/components/ui/ThemedText';
 import { PICKER_GREEN } from '@/components/ui/ScrollWheelPicker';
 import { format12h } from '@/components/ui/StepsSleepRow';
+import { useShallow } from 'zustand/react/shallow';
 import { useActivityStore } from '@/stores/activity.store';
 import { useAuthStore } from '@/stores/auth.store';
 import { useUserStore } from '@/stores/user.store';
@@ -30,7 +31,15 @@ export function SleepMorningPrompt({ onEdit }: Props) {
     regularWakeTime,
     confirmLastNightSleep,
     dismissSleepPrompt,
-  } = useActivityStore();
+  } = useActivityStore(
+    useShallow((s) => ({
+      sleepConfirmationPending: s.sleepConfirmationPending,
+      regularSleepTime: s.regularSleepTime,
+      regularWakeTime: s.regularWakeTime,
+      confirmLastNightSleep: s.confirmLastNightSleep,
+      dismissSleepPrompt: s.dismissSleepPrompt,
+    })),
+  );
 
   const handleYes = useCallback(async () => {
     if (!userId) return;

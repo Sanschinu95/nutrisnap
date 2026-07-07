@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
   bigNumber: {
     fontSize: 36,
     color: '#2F241E',
-    fontFamily: Typography.fonts.serif,
+    fontFamily: Typography.fonts.headingBold,
     fontWeight: '500',
   },
   dayWord: { fontSize: 14, color: '#8a7e74' },
@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     color: '#2F241E',
-    fontFamily: Typography.fonts.serif,
+    fontFamily: Typography.fonts.headingBold,
     fontWeight: '500',
     marginTop: 4,
   },

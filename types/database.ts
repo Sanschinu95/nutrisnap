@@ -3,7 +3,7 @@
  * These match the SQL schema in docs/schema.sql
  */
 
-import type { ArchetypeKey, ArchetypeTier, BiologicalSex, GoalType } from './archetype';
+import type { BiologicalSex, GoalType, DietStyle } from './profile';
 import type {
   FeedbackType,
   FoodItem,
@@ -125,11 +125,12 @@ export interface Profile {
   protein_goal: number | null;
   carb_goal: number | null;
   fat_goal: number | null;
-  archetype: ArchetypeKey | null;
-  archetype_tier: ArchetypeTier;
-  archetype_progress: number;
-  archetype_level: string;
+  diet_style: DietStyle | null;
   dietary_preferences: DietaryPreferences | null;
+  /** Immutable short code (NUTRI-XXXXXX) for friend adds. Assigned by DB trigger. */
+  friend_code: string | null;
+  /** Ghost mode: hide own streak/consistency from friends' leaderboards. */
+  is_ghost_mode: boolean;
   /** Target rate of weight change in kg/week. Null when goal is 'maintain'. */
   pace_kg_per_week: number | null;
   /** Free-form list of self-reported medical conditions. Personalization only. */

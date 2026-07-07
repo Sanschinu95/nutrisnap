@@ -22,6 +22,9 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 const MAX_ATTEMPTS = 3;
+// Generous per-user daily cap so normal use is never affected, but a single
+// account can't drain the shared scan key pool. Tune as needed.
+const DAILY_SCAN_LIMIT = 50;
 
 const ANALYSIS_PROMPT = `You are an expert nutritionist analyzing food photos for a health tracking app.
 
@@ -121,6 +124,22 @@ serve(async (req) => {
 
   const { data: userData, error: userErr } = await supabase.auth.getUser(token);
   if (userErr || !userData?.user) return jsonError(401, 'INVALID_TOKEN');
+  const userId = userData.user.id;
+
+  // 1b) Per-user daily rate limit (atomic-ish via read + upsert-after-success).
+  const today = new Date().toISOString().split('T')[0];
+  const { data: usageRow, error: usageErr } = await supabase
+    .from('scan_usage_daily')
+    .select('count')
+    .eq('user_id', userId)
+    .eq('date', today)
+    .maybeSingle();
+  if (usageErr) {
+    console.error('scan_usage_select_failed', usageErr);
+    // Fail open — a stuck usage table shouldn't block scanning.
+  }
+  const usedToday = usageRow?.count ?? 0;
+  if (usedToday >= DAILY_SCAN_LIMIT) return jsonError(429, 'DAILY_LIMIT');
 
   // 2) Parse body
   let body: RequestBody;
@@ -190,6 +209,19 @@ serve(async (req) => {
 
     const data = await groqRes.json();
     const content: string = data?.choices?.[0]?.message?.content ?? '';
+
+    // Bump the usage counter after a successful call. Fire-and-forget so a
+    // hiccup here can't hide a valid result from the user.
+    supabase
+      .from('scan_usage_daily')
+      .upsert(
+        { user_id: userId, date: today, count: usedToday + 1 },
+        { onConflict: 'user_id,date' },
+      )
+      .then(({ error }) => {
+        if (error) console.error('scan_usage_upsert_failed', error);
+      });
+
     return new Response(JSON.stringify({ content }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', ...CORS },

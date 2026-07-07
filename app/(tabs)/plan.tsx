@@ -8,7 +8,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   FadeIn,
   FadeInDown,
-  useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -19,20 +18,17 @@ import Svg, {
   Circle,
   ClipPath,
   Defs,
-  G,
-  Image as SvgImage,
-  LinearGradient as SvgLinearGradient,
   Path,
-  Stop,
-  Text as SvgText,
 } from 'react-native-svg';
 import BottomSheet, { BottomSheetView } from '@gorhom/bottom-sheet';
+import { useShallow } from 'zustand/react/shallow';
 import { ThemedText } from '@/components/ui/ThemedText';
 import { SkeletonCard } from '@/components/ui/SkeletonLoader';
 import { useTheme } from '@/hooks/useTheme';
 import { useDailyStore } from '@/stores/daily.store';
 import { useUserStore } from '@/stores/user.store';
 import { useAuthStore } from '@/stores/auth.store';
+import { useUIStore } from '@/stores/ui.store';
 import { loadMonthlyData, loadWeeklyData, type MonthlyData, type WeeklyData } from '@/lib/progressData';
 import { Spacing, Typography } from '@/constants/theme';
 import type { FoodEntry } from '@/types/nutrition';
@@ -97,17 +93,32 @@ const TAB_COLOR: Record<ProgressTab, string> = {
 
 export default function ProgressScreen() {
   const { theme } = useTheme();
-  const { profile, calorieGoal, macroGoals, hydrationGoalMl, streak, isLoading } = useUserStore();
-  const { entries, summary, waterMl, loadToday, removeEntry } = useDailyStore();
+  const { profile, calorieGoal, macroGoals, hydrationGoalMl, streak, isLoading } = useUserStore(
+    useShallow((s) => ({
+      profile: s.profile, calorieGoal: s.calorieGoal, macroGoals: s.macroGoals,
+      hydrationGoalMl: s.hydrationGoalMl, streak: s.streak, isLoading: s.isLoading,
+    })),
+  );
+  const { entries, summary, waterMl, loadToday, removeEntry } = useDailyStore(
+    useShallow((s) => ({
+      entries: s.entries, summary: s.summary, waterMl: s.waterMl,
+      loadToday: s.loadToday, removeEntry: s.removeEntry,
+    })),
+  );
   const [activeTab, setActiveTab] = useState<ProgressTab>('Daily');
   const [weeklyData, setWeeklyData] = useState<WeeklyData | null>(null);
   const [monthlyData, setMonthlyData] = useState<MonthlyData | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<FoodEntry | null>(null);
   const bottomSheetRef = useRef<BottomSheet>(null);
+  const setHideTabBar = useUIStore((s) => s.setHideTabBar);
 
   useEffect(() => {
     loadToday();
   }, [loadToday]);
+
+  // Safety net: restore the floating tab bar if we navigate away while the
+  // meal sheet is still open.
+  useEffect(() => () => setHideTabBar(false), [setHideTabBar]);
 
   useEffect(() => {
     const user = useAuthStore.getState().user;
@@ -129,8 +140,11 @@ export default function ProgressScreen() {
 
   const openEntry = useCallback((entry: FoodEntry) => {
     setSelectedEntry(entry);
+    // Hide the floating tab bar so it doesn't cover the sheet's Edit / Rescan /
+    // Delete actions, which sit near the bottom of the sheet.
+    setHideTabBar(true);
     bottomSheetRef.current?.snapToIndex(0);
-  }, []);
+  }, [setHideTabBar]);
 
   const handleEdit = useCallback(() => {
     if (!selectedEntry) return;
@@ -278,7 +292,10 @@ export default function ProgressScreen() {
         index={-1}
         snapPoints={['45%']}
         enablePanDownToClose
-        onClose={() => setSelectedEntry(null)}
+        onClose={() => {
+          setSelectedEntry(null);
+          setHideTabBar(false);
+        }}
         backgroundStyle={{ backgroundColor: C.card }}
         handleIndicatorStyle={{ backgroundColor: C.emptyFill }}
       >
@@ -355,7 +372,7 @@ function DailyView({
       <InsightSentence parts={insight} />
 
       <View style={[styles.cardBig, CARD_SHADOW]}>
-        <CumulativeRoute entries={entries} />
+        <MealTimeline entries={entries} />
       </View>
 
       <View style={[styles.cardBig, CARD_SHADOW]}>
@@ -409,159 +426,59 @@ function buildDailyInsight(count: number): InsightPart[] {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// CumulativeRoute — upward-only cumulative-calorie spline
+// MealTimeline — horizontal, sideways-scrollable meal strip
 // ────────────────────────────────────────────────────────────────────────────
 
-interface CumulativeRouteProps {
+interface MealTimelineProps {
   entries: FoodEntry[];
 }
 
-const ROUTE_PADDING = { top: 24, right: 20, bottom: 36, left: 20 };
-
-function CumulativeRoute({ entries }: CumulativeRouteProps) {
-  const width = 320;
-  const height = 200;
-  const plotW = width - ROUTE_PADDING.left - ROUTE_PADDING.right;
-  const plotH = height - ROUTE_PADDING.top - ROUTE_PADDING.bottom;
-
+// A circular thumbnail per meal, connected by a horizontal line, with the time
+// and calories below each node. Replaces the old cumulative-calorie spline,
+// which collapsed into a vertical stack when meals were logged close together.
+function MealTimeline({ entries }: MealTimelineProps) {
   const sorted = useMemo(
     () => entries.slice().sort((a, b) => new Date(a.logged_at).getTime() - new Date(b.logged_at).getTime()),
     [entries],
   );
 
-  const points = useMemo(() => {
-    if (sorted.length === 0) return [];
-    let cum = 0;
-    return sorted.map((e) => {
-      cum += e.total_calories;
-      return { t: new Date(e.logged_at).getTime(), cum, entry: e };
-    });
-  }, [sorted]);
-
-  const dashOffset = useSharedValue(1);
-  useEffect(() => {
-    dashOffset.value = 1;
-    dashOffset.value = withTiming(0, { duration: 800, easing: Easing.out(Easing.cubic) });
-  }, [points.length]);
-
-  // Empty state — flat dotted baseline with helper text
-  if (points.length === 0) {
+  if (sorted.length === 0) {
     return (
-      <View style={{ width: '100%', alignItems: 'center' }}>
-        <Svg width={width} height={height}>
-          <Path
-            d={`M ${ROUTE_PADDING.left} ${ROUTE_PADDING.top + plotH * 0.85} L ${ROUTE_PADDING.left + plotW} ${ROUTE_PADDING.top + plotH * 0.85}`}
-            stroke={C.emptyFill}
-            strokeWidth={2}
-            strokeDasharray="6,6"
-          />
-        </Svg>
-        <ThemedText variant="body" color={C.muted} align="center" style={{ marginTop: -32, paddingHorizontal: 24 }}>
-          Scan your first meal to start your Route.
+      <View style={styles.timelineEmpty}>
+        <Ionicons name="restaurant-outline" size={22} color={C.muted} />
+        <ThemedText variant="body" color={C.muted} align="center" style={{ marginTop: 8 }}>
+          Scan your first meal to start your timeline.
         </ThemedText>
       </View>
     );
   }
 
-  // X range: cover the actual meal span, or a 6-hour minimum so a single meal
-  // does not collapse to a vertical line.
-  const tMin = points[0].t;
-  const tMaxRaw = points[points.length - 1].t;
-  const tSpanMs = Math.max(tMaxRaw - tMin, 6 * 3600 * 1000);
-  const tMax = tMin + tSpanMs;
-  const yMax = Math.max(points[points.length - 1].cum, 1);
-
-  // Project to pixel coords; prepend a baseline anchor at (tMin, 0) so the
-  // curve starts from the bottom rather than mid-air at the first meal.
-  const px = (t: number) => ROUTE_PADDING.left + ((t - tMin) / (tMax - tMin || 1)) * plotW;
-  const py = (cum: number) => ROUTE_PADDING.top + (1 - cum / yMax) * plotH;
-
-  const curvePts = [{ x: px(tMin), y: py(0) }, ...points.map((p) => ({ x: px(p.t), y: py(p.cum) }))];
-  const splinePath = monotoneCubicPath(curvePts);
-  const areaPath = `${splinePath} L ${curvePts[curvePts.length - 1].x} ${ROUTE_PADDING.top + plotH} L ${curvePts[0].x} ${ROUTE_PADDING.top + plotH} Z`;
-
-  // Total perimeter estimate for the stroke draw-in animation.
-  const pathLength = curvePts.reduce((acc, p, i) => (i === 0 ? 0 : acc + Math.hypot(p.x - curvePts[i - 1].x, p.y - curvePts[i - 1].y)), 0);
-
-  const strokeAnimProps = useAnimatedProps(() => ({
-    strokeDashoffset: dashOffset.value * pathLength,
-  }));
-
   return (
-    <View style={{ width: '100%', alignItems: 'center' }}>
-      <Svg width={width} height={height}>
-        <Defs>
-          <SvgLinearGradient id="routeFill" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={C.monthly} stopOpacity={0.25} />
-            <Stop offset="1" stopColor={C.monthly} stopOpacity={0.02} />
-          </SvgLinearGradient>
-        </Defs>
-        <Path d={areaPath} fill="url(#routeFill)" />
-        <AnimatedPath
-          d={splinePath}
-          stroke={C.monthly}
-          strokeWidth={2.5}
-          fill="none"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeDasharray={`${pathLength} ${pathLength}`}
-          animatedProps={strokeAnimProps}
-        />
-
-        {/* Meal nodes: thumbnail-in-circle */}
-        {points.map((p, i) => {
-          const x = px(p.t);
-          const y = py(p.cum);
-          const r = 16;
-          const thumb = p.entry.image_url ?? undefined;
-          const clipId = `route-clip-${i}`;
-          return (
-            <G key={p.entry.id}>
-              {thumb ? (
-                <>
-                  <Defs>
-                    <ClipPath id={clipId}>
-                      <Circle cx={x} cy={y} r={r - 1.5} />
-                    </ClipPath>
-                  </Defs>
-                  <Circle cx={x} cy={y} r={r} fill="#FFFFFF" stroke={C.monthly} strokeWidth={1.5} />
-                  <SvgImage
-                    href={thumb}
-                    x={x - (r - 1.5)}
-                    y={y - (r - 1.5)}
-                    width={(r - 1.5) * 2}
-                    height={(r - 1.5) * 2}
-                    clipPath={`url(#${clipId})`}
-                    preserveAspectRatio="xMidYMid slice"
-                  />
-                </>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.timelineScroll}
+    >
+      {sorted.map((entry, i) => (
+        <View key={entry.id} style={styles.timelineNode}>
+          <View style={styles.timelineTrack}>
+            <View style={[styles.timelineLine, i === 0 && styles.timelineLineHidden]} />
+            <View style={styles.timelineCircle}>
+              {entry.image_url ? (
+                <Image source={{ uri: entry.image_url }} style={styles.timelineThumb} />
               ) : (
-                <>
-                  <Circle cx={x} cy={y} r={r} fill="#FFFFFF" stroke={C.monthly} strokeWidth={1.5} />
-                  <SvgText x={x} y={y + r * 0.32} fontSize={r * 0.95} textAnchor="middle">
-                    🍴
-                  </SvgText>
-                </>
+                <Text style={{ fontSize: 20 }}>🍴</Text>
               )}
-              <SvgText
-                x={x}
-                y={y + r + 14}
-                fontSize={9}
-                fill={C.muted}
-                textAnchor="middle"
-                fontFamily={SANS_MED}
-              >
-                {formatHourLabel(p.t)}
-              </SvgText>
-            </G>
-          );
-        })}
-      </Svg>
-    </View>
+            </View>
+            <View style={[styles.timelineLine, i === sorted.length - 1 && styles.timelineLineHidden]} />
+          </View>
+          <Text style={styles.timelineTime}>{formatHourLabel(new Date(entry.logged_at).getTime())}</Text>
+          <Text style={styles.timelineCal}>{entry.total_calories} cal</Text>
+        </View>
+      ))}
+    </ScrollView>
   );
 }
-
-const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 function formatHourLabel(ms: number): string {
   const d = new Date(ms);
@@ -572,43 +489,6 @@ function formatHourLabel(ms: number): string {
   return `${h12}:${String(m).padStart(2, '0')}${ampm}`;
 }
 
-// Monotone-cubic interpolation (single point: degrade to a line)
-function monotoneCubicPath(points: { x: number; y: number }[]): string {
-  if (points.length === 0) return '';
-  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
-  const n = points.length;
-  const deltas: number[] = [];
-  const slopes: number[] = [];
-  for (let i = 0; i < n - 1; i++) {
-    const dx = points[i + 1].x - points[i].x;
-    deltas.push(dx === 0 ? 0 : (points[i + 1].y - points[i].y) / dx);
-  }
-  slopes.push(deltas[0]);
-  for (let i = 1; i < n - 1; i++) {
-    if (deltas[i - 1] * deltas[i] <= 0) slopes.push(0);
-    else slopes.push((deltas[i - 1] + deltas[i]) / 2);
-  }
-  slopes.push(deltas[n - 2]);
-  for (let i = 0; i < n - 1; i++) {
-    if (Math.abs(deltas[i]) < 1e-12) { slopes[i] = 0; slopes[i + 1] = 0; continue; }
-    const a = slopes[i] / deltas[i];
-    const b = slopes[i + 1] / deltas[i];
-    const s = a * a + b * b;
-    if (s > 9) {
-      const t = 3 / Math.sqrt(s);
-      slopes[i] = t * a * deltas[i];
-      slopes[i + 1] = t * b * deltas[i];
-    }
-  }
-  let d = `M ${points[0].x} ${points[0].y}`;
-  for (let i = 0; i < n - 1; i++) {
-    const p0 = points[i];
-    const p1 = points[i + 1];
-    const dx = (p1.x - p0.x) / 3;
-    d += ` C ${p0.x + dx} ${p0.y + slopes[i] * dx}, ${p1.x - dx} ${p1.y - slopes[i + 1] * dx}, ${p1.x} ${p1.y}`;
-  }
-  return d;
-}
 
 // ────────────────────────────────────────────────────────────────────────────
 // Meal row
@@ -1171,6 +1051,59 @@ const styles = StyleSheet.create({
     fontFamily: SERIF_BOLD,
     fontSize: 18,
     color: C.primary,
+  },
+
+  // Horizontal meal timeline
+  timelineEmpty: {
+    alignItems: 'center',
+    paddingVertical: 18,
+  },
+  timelineScroll: {
+    alignItems: 'flex-start',
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  timelineNode: {
+    width: 78,
+    alignItems: 'center',
+  },
+  timelineTrack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    height: 52,
+  },
+  timelineLine: {
+    flex: 1,
+    height: 2,
+    backgroundColor: C.emptyFill,
+  },
+  timelineLineHidden: {
+    backgroundColor: 'transparent',
+  },
+  timelineCircle: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: C.emptyFillSoft,
+    borderWidth: 1.5,
+    borderColor: C.monthly,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  timelineThumb: { width: '100%', height: '100%' },
+  timelineTime: {
+    fontFamily: SANS_MED,
+    fontSize: 11,
+    color: C.primary,
+    marginTop: 8,
+  },
+  timelineCal: {
+    fontFamily: SANS,
+    fontSize: 10,
+    color: C.muted,
+    marginTop: 1,
   },
 
   // Meal timeline list

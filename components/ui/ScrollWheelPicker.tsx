@@ -138,6 +138,18 @@ export function ScrollWheelPicker({
     return [...padTop, ...values, ...padBot];
   }, [padCount, values]);
 
+  const handleCenterPress = useCallback(() => {
+    Haptics.selectionAsync();
+    setEditValue(formatValue(value, step));
+    setEditing(true);
+  }, [value, step]);
+
+  // Stable wrapper so the memoized center Row never re-renders just because
+  // this closure changed identity between value updates.
+  const centerPressRef = useRef(handleCenterPress);
+  centerPressRef.current = handleCenterPress;
+  const onCenterPress = useCallback(() => centerPressRef.current(), []);
+
   const renderItem = useCallback(
     ({ item, index }: { item: number; index: number }) => (
       <Row
@@ -147,16 +159,11 @@ export function ScrollWheelPicker({
         itemHeight={itemHeight}
         fontSize={fontSize}
         step={step}
+        onCenterPress={onCenterPress}
       />
     ),
-    [padCount, centerIndex, itemHeight, fontSize, step],
+    [padCount, centerIndex, itemHeight, fontSize, step, onCenterPress],
   );
-
-  const handleCenterPress = () => {
-    Haptics.selectionAsync();
-    setEditValue(formatValue(value, step));
-    setEditing(true);
-  };
 
   const commitTyped = () => {
     const num = Number(editValue.replace(/[^0-9.]/g, ''));
@@ -234,16 +241,6 @@ export function ScrollWheelPicker({
         </View>
       )}
 
-      {!editing && (
-        <Pressable
-          style={[
-            styles.centerTap,
-            { top: padCount * itemHeight, height: itemHeight },
-          ]}
-          onPress={handleCenterPress}
-        />
-      )}
-
       </View>
     </View>
   );
@@ -258,16 +255,18 @@ interface RowProps {
   itemHeight: number;
   fontSize: number;
   step: number;
+  onCenterPress: () => void;
 }
 
 const Row = React.memo(
-  function Row({ item, realIdx, targetIdx, itemHeight, fontSize, step }: RowProps) {
+  function Row({ item, realIdx, targetIdx, itemHeight, fontSize, step, onCenterPress }: RowProps) {
     const isPad = item === PAD_TOP || item === PAD_BOT;
     if (isPad) {
       return <View style={{ height: itemHeight }} />;
     }
 
     const d = Math.abs(realIdx - targetIdx);
+    const isCenter = d === 0;
     let opacity = 0.1;
     let size = Math.round(fontSize * 0.5);
     let color = TEXT_TERTIARY;
@@ -285,24 +284,37 @@ const Row = React.memo(
       color = TEXT_SECONDARY;
     }
 
+    const label = (
+      <ThemedText
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        style={{
+          fontSize: size,
+          lineHeight: size + 4,
+          fontFamily: Typography.fonts.headingBold,
+          color,
+          opacity,
+          textAlign: 'center',
+          includeFontPadding: false,
+          paddingHorizontal: 4,
+        }}
+      >
+        {formatValue(item, step)}
+      </ThemedText>
+    );
+
     return (
       <View style={[styles.row, { height: itemHeight }]}>
-        <ThemedText
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          style={{
-            fontSize: size,
-            lineHeight: size + 4,
-            fontFamily: Typography.fonts.headingBold,
-            color,
-            opacity,
-            textAlign: 'center',
-            includeFontPadding: false,
-            paddingHorizontal: 4,
-          }}
-        >
-          {formatValue(item, step)}
-        </ThemedText>
+        {isCenter ? (
+          // Only the centered value is tappable (tap to type). It lives inside
+          // the list row — not an absolute overlay — so a drag scrolls the wheel
+          // instead of being swallowed. hitSlop keeps the tap target comfortable.
+          <Pressable onPress={onCenterPress} hitSlop={10}>
+            {label}
+          </Pressable>
+        ) : (
+          label
+        )}
       </View>
     );
   },
@@ -312,7 +324,8 @@ const Row = React.memo(
     prev.targetIdx === next.targetIdx &&
     prev.itemHeight === next.itemHeight &&
     prev.fontSize === next.fontSize &&
-    prev.step === next.step,
+    prev.step === next.step &&
+    prev.onCenterPress === next.onCenterPress,
 );
 
 function keyExtractor(_: number, i: number): string {
@@ -384,11 +397,6 @@ const styles = StyleSheet.create({
     borderTopColor: 'transparent',
     borderBottomColor: 'transparent',
     borderRightColor: PICKER_GREEN,
-  },
-  centerTap: {
-    position: 'absolute',
-    left: 24,
-    right: 24,
   },
   editOverlay: {
     alignItems: 'center',

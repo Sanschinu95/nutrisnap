@@ -1,5 +1,5 @@
 /**
- * Cloudinary image upload utilities for NutriSnap
+ * Cloudinary image upload utilities for Nyurix
  * Handles food scan images and profile pictures with retry logic
  */
 
@@ -76,7 +76,7 @@ export async function uploadFoodImage(
     name: `food_${userId}_${timestamp}.jpg`,
   } as any);
   formData.append('upload_preset', UPLOAD_PRESET!);
-  formData.append('folder', `nutrisnap/food-scans/${userId}`);
+  formData.append('folder', `nyurix/food-scans/${userId}`);
   // NOTE: 'transformation' parameter is rejected by Cloudinary on UNSIGNED
   // uploads (HTTP 400). Configure incoming transformations on the
   // 'nutrisnap_mobile' upload preset in the Cloudinary dashboard instead
@@ -104,7 +104,7 @@ export async function uploadFeedbackScreenshot(
     name: `feedback_${userId}_${timestamp}.jpg`,
   } as any);
   formData.append('upload_preset', UPLOAD_PRESET!);
-  formData.append('folder', `nutrisnap/feedback/${userId}`);
+  formData.append('folder', `nyurix/feedback/${userId}`);
 
   return uploadWithRetry(formData);
 }
@@ -127,7 +127,7 @@ export async function uploadProfileImage(
     name: `profile_${userId}_${timestamp}.jpg`,
   } as any);
   formData.append('upload_preset', UPLOAD_PRESET!);
-  formData.append('folder', `nutrisnap/profiles/${userId}`);
+  formData.append('folder', `nyurix/profiles/${userId}`);
   // Same Cloudinary unsigned-upload limitation as uploadFoodImage above —
   // configure profile-image transformations (e.g. w_400,h_400,c_fill,g_face)
   // on the upload preset in the Cloudinary dashboard, not in this request.
