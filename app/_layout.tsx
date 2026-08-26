@@ -40,38 +40,13 @@ import { useCoachStore } from '@/stores/coach.store';
 import { useActivityStore } from '@/stores/activity.store';
 import { useTreatDayStore } from '@/stores/treatDay.store';
 import { useStreakStore } from '@/stores/streak.store';
-import { initializeNotifications, scheduleWaterReminders, scheduleMealReminder, scheduleCoachWeeklyReview } from '@/lib/notifications';
-import * as Sentry from '@sentry/react-native';
+import { initializeNotifications, registerNotificationListeners, scheduleCoachWeeklyReview } from '@/lib/notifications';
+import {
+  checkAndScheduleEncouragement,
+  rescheduleAllPersonalityNotifications,
+} from '@/lib/notificationScheduler';
+import { useNotificationPrefsStore } from '@/stores/notificationPrefs.store';
 
-// ─── Crash & error reporting ────────────────────────────────────
-// Initialized only when a DSN is configured, so dev builds without one stay
-// quiet. sendDefaultPii:false plus the beforeSend scrubber keep health data
-// (weight, medical conditions carried in profile/coach payloads) out of every
-// report — important because this app handles sensitive data.
-const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
-if (SENTRY_DSN) {
-  Sentry.init({
-    dsn: SENTRY_DSN,
-    // Never attach IP address, cookies, or default user identifiers.
-    sendDefaultPii: false,
-    // Sample a fraction of transactions for performance monitoring.
-    tracesSampleRate: 0.2,
-    // Strip anything that could carry personal / health data before it leaves
-    // the device.
-    beforeSend(event) {
-      if (event.user) {
-        // Keep only an opaque id (if present); drop email / ip / username.
-        event.user = event.user.id ? { id: event.user.id } : {};
-      }
-      if (event.request) {
-        delete event.request.data;
-        delete event.request.cookies;
-        delete event.request.headers;
-      }
-      return event;
-    },
-  });
-}
 
 // Keep splash screen visible while we load resources
 SplashScreen.preventAutoHideAsync();
@@ -82,9 +57,15 @@ function useProtectedRoute() {
   const isInitialized = useAuthStore((s) => s.isInitialized);
   const profile = useUserStore((s) => s.profile);
   const isGuest = useUserStore((s) => s.isGuest);
+  const profileChecked = useUserStore((s) => s.profileChecked);
 
   useEffect(() => {
     if (!isInitialized) return;
+
+    // Signed in, but the profile fetch/migration hasn't resolved yet — routing
+    // now would misread "profile unknown" as "needs onboarding" and shove
+    // returning users back into the questionnaire. Wait for the check.
+    if (session && !profileChecked) return;
 
     const inAuthGroup = segments[0] === 'auth';
     const inOnboarding = segments[0] === 'onboarding';
@@ -106,7 +87,9 @@ function useProtectedRoute() {
       segment0 === 'streak-detail' ||
       segment0 === 'treat-day' ||
       segment0 === 'friends' ||
-      segment0 === 'milestone-share';
+      segment0 === 'milestone-share' ||
+      segment0 === 'notification-intro' ||
+      segment0 === 'notification-settings';
     const isWelcome = !inAuthGroup && !inOnboarding && !inFutureYou && !inTabs && !inAppScreen;
 
     const hasCompletedOnboarding = profile?.onboarding_complete === true;
@@ -120,8 +103,9 @@ function useProtectedRoute() {
         router.replace('/');
       }
     } else if (isAuthenticated && !hasCompletedOnboarding) {
-      // Signed in but no completed profile -> onboarding
-      if (!inOnboarding && !inFutureYou && !isWelcome) {
+      // Signed in but genuinely no completed profile -> onboarding. Welcome is
+      // NOT allowed here: a signed-in user must never see Get Started / Log In.
+      if (!inOnboarding && !inFutureYou) {
         router.replace('/onboarding');
       }
     } else {
@@ -131,7 +115,7 @@ function useProtectedRoute() {
         router.replace('/(tabs)/home');
       }
     }
-  }, [session, isInitialized, profile, isGuest, segments]);
+  }, [session, isInitialized, profile, isGuest, profileChecked, segments]);
 }
 
 function RootLayout() {
@@ -173,37 +157,59 @@ function RootLayout() {
         // Load streaks (also applies grace-day catch-up on stale streaks).
         useStreakStore.getState().loadStreak(session.user.id);
       }
-      // Initialize notifications
+      // Configure notification channels/handler. Does NOT prompt for
+      // permission — that happens on the notification-intro screen after
+      // onboarding. Returns whether permission is already granted.
       const granted = await initializeNotifications();
       if (granted) {
-        // Schedule default reminders
-        await scheduleWaterReminders();
-        // Default meal reminder at 12:00 PM
-        await scheduleMealReminder(12, 0);
         // Sunday 8 PM coach weekly review
         await scheduleCoachWeeklyReview();
       }
+      // Personality reminders: load prefs (guest-safe) and rebuild the
+      // schedule. Internally a no-op while permission isn't granted.
+      const userId = session?.user?.id ?? useUserStore.getState().profile?.id ?? null;
+      await useNotificationPrefsStore.getState().loadPrefs(userId);
+      await rescheduleAllPersonalityNotifications(
+        useNotificationPrefsStore.getState().prefs,
+      );
     }
     prepare();
   }, [initialize, loadProfile]);
 
-  // Wait for BOTH fonts and auth-init before dismissing the splash. Otherwise
-  // a signed-in user briefly sees the Welcome (Get Started / Log In) screen
-  // for the ~1s that auth resolution takes on cold start.
+  // Notification tap routing + telemetry + hydration quick-add actions.
+  useEffect(() => registerNotificationListeners(), []);
+
+  // Wait for fonts, auth restoration, and (for signed-in users) profile
+  // restoration before dismissing the splash. If we render the stack while the
+  // session is restored but profileChecked is still false, Expo Router can show
+  // the pre-login Welcome or the onboarding form for a returning user.
   const isAuthInitialized = useAuthStore((s) => s.isInitialized);
+  const sessionUserId = useAuthStore((s) => s.session?.user?.id ?? null);
+  const profileChecked = useUserStore((s) => s.profileChecked);
   useEffect(() => {
-    if ((fontsLoaded || fontError) && isAuthInitialized) {
+    const restoredSessionReady = !sessionUserId || profileChecked;
+    if ((fontsLoaded || fontError) && isAuthInitialized && restoredSessionReady) {
       setAppIsReady(true);
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded, fontError, isAuthInitialized]);
+  }, [fontsLoaded, fontError, isAuthInitialized, profileChecked, sessionUserId]);
 
   // Re-check the morning sleep prompt and refresh today's step total whenever
   // the user brings the app back to the foreground (covers "opened at 6am,
   // backgrounded, reopened at 8am" and similar).
   useEffect(() => {
+    // Personality notifications refresh at most every 15 min: every open
+    // pushes the missed-you dead-man's-switch forward and re-rolls copy with
+    // fresh context, but rescheduling ~8 OS alarms per app switch is waste.
+    let lastNotifRefresh = 0;
     const sub = AppState.addEventListener('change', (status) => {
       if (status !== 'active') return;
+      if (Date.now() - lastNotifRefresh > 15 * 60 * 1000) {
+        lastNotifRefresh = Date.now();
+        rescheduleAllPersonalityNotifications().then(() => {
+          checkAndScheduleEncouragement();
+        });
+      }
       const userId = useAuthStore.getState().user?.id ?? null;
       if (!userId) return;
       useActivityStore.getState().checkSleepPromptStatus(userId);
@@ -213,11 +219,25 @@ function RootLayout() {
     return () => sub.remove();
   }, []);
 
+  // On sign-in / account switch: load that account's notification prefs and
+  // rebuild the schedule so user A's reminders never fire for user B.
+  useEffect(() => {
+    if (!sessionUserId) return;
+    useNotificationPrefsStore
+      .getState()
+      .loadPrefs(sessionUserId)
+      .then(() =>
+        rescheduleAllPersonalityNotifications(
+          useNotificationPrefsStore.getState().prefs,
+        ),
+      );
+  }, [sessionUserId]);
+
 
 
   useProtectedRoute();
 
-  if (!appIsReady) {
+  if (!appIsReady || (sessionUserId && !profileChecked)) {
     return (
       <View style={[styles.loading, { backgroundColor: theme.background }]} />
     );
@@ -243,6 +263,14 @@ function RootLayout() {
         <Stack.Screen name="sleep-detail" />
         <Stack.Screen name="steps-detail" />
         <Stack.Screen name="friends" />
+        <Stack.Screen name="notification-settings" />
+        <Stack.Screen
+          name="notification-intro"
+          options={{
+            animation: 'fade',
+            gestureEnabled: false,
+          }}
+        />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen
           name="future-you"
@@ -294,6 +322,4 @@ const styles = StyleSheet.create({
 
 });
 
-// Sentry.wrap adds the crash-reporting error boundary + touch/navigation
-// context. Safe no-op when Sentry isn't initialized (no DSN configured).
-export default Sentry.wrap(RootLayout);
+export default RootLayout;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
@@ -130,6 +130,24 @@ export default function HomeScreen() {
   const [showFeedback, setShowFeedback] = useState(false);
   const bottomSheetRef = useRef<BottomSheet>(null);
   const { playWaterSound } = useWaterSound();
+
+  // Notification deep links: ?focus=hydration scrolls to the jar,
+  // ?focus=sleep scrolls to the morning sleep prompt.
+  const { focus } = useLocalSearchParams<{ focus?: string }>();
+  const scrollRef = useRef<ScrollView>(null);
+  const hydrationSectionY = useRef(0);
+  const sleepSectionY = useRef(0);
+
+  useEffect(() => {
+    if (focus !== 'hydration' && focus !== 'sleep') return;
+    // Give entering animations/layout a beat to settle before measuring.
+    const timer = setTimeout(() => {
+      const y = focus === 'hydration' ? hydrationSectionY.current : sleepSectionY.current;
+      scrollRef.current?.scrollTo({ y: Math.max(0, y - Spacing.md), animated: true });
+      router.setParams({ focus: '' });
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [focus]);
 
   // Transform FoodEntry[] â†’ RouteDataPoint[] for the chart component
   const routeData: RouteDataPoint[] = useMemo(
@@ -310,7 +328,7 @@ export default function HomeScreen() {
       />
       <TreatDayCelebration />
       <MilestoneCelebration />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <Animated.View entering={FadeIn.duration(450)} style={styles.header}>
           <View style={styles.headerCopy}>
             <ThemedText variant="h1" style={styles.greeting}>
@@ -359,7 +377,11 @@ export default function HomeScreen() {
           <StreakPill />
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(140).springify()} style={styles.heroGrid}>
+        <Animated.View
+          entering={FadeInDown.delay(140).springify()}
+          style={styles.heroGrid}
+          onLayout={(e) => { hydrationSectionY.current = e.nativeEvent.layout.y; }}
+        >
           <View style={[styles.ringsPanel, Shadows.card]}>
             <CalorieRing
               size={210}
@@ -397,7 +419,11 @@ export default function HomeScreen() {
           />
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(160).springify()} style={styles.stepsSleepSlot}>
+        <Animated.View
+          entering={FadeInDown.delay(160).springify()}
+          style={styles.stepsSleepSlot}
+          onLayout={(e) => { sleepSectionY.current = e.nativeEvent.layout.y; }}
+        >
           <SleepMorningPrompt
             onEdit={() => useActivityStore.getState().requestOpenSleepSheet()}
           />

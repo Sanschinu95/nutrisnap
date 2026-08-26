@@ -18,7 +18,7 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Nyurix needs camera access to scan and analyze your food",
         "NSPhotoLibraryUsageDescription": "Nyurix needs photo library access to analyze food photos",
-        "NSMotionUsageDescription": "Nyurix uses your phone's step counter to track daily activity. Steps stay on your device.",
+        "NSMotionUsageDescription": "Nyurix uses your phone's step counter to track your daily activity and sync it to your account.",
         "LSApplicationQueriesSchemes": [
           "instagram-stories"
         ]
@@ -26,11 +26,6 @@
     },
     "android": {
       "package": "com.nyurix.app",
-      "queries": [
-        {
-          "package": "com.instagram.android"
-        }
-      ],
       "adaptiveIcon": {
         "backgroundColor": "#F5F0E8",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -39,12 +34,17 @@
       },
       "permissions": [
         "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
         "VIBRATE",
         "RECEIVE_BOOT_COMPLETED",
         "android.permission.ACTIVITY_RECOGNITION",
         "android.permission.health.READ_STEPS"
+      ],
+      "blockedPermissions": [
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW"
       ]
     },
     "web": {
@@ -53,6 +53,7 @@
     },
     "plugins": [
       "./plugins/withInstagramQueries",
+      "./plugins/withScopedStoragePermissions",
       "expo-router",
       "expo-secure-store",
       [
@@ -72,11 +73,10 @@
         {
           "photosPermission": "Nyurix needs access to your photo library to save story cards",
           "savePhotosPermission": "Nyurix needs permission to save your nutrition story cards",
-          "isAccessMediaLocationEnabled": true
+          "isAccessMediaLocationEnabled": false
         }
       ],
       "expo-audio",
-      "@sentry/react-native",
       "react-native-health-connect",
       [
         "expo-build-properties",
@@ -85,7 +85,8 @@
             "minSdkVersion": 26
           }
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true

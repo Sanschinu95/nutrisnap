@@ -20,8 +20,8 @@ import {
 } from '../lib/stepsTracker';
 import {
   getTodayStepsFromHealthConnect,
+  hasHealthConnectStepPermission,
   isHealthConnectAvailable,
-  requestHealthConnectStepPermission,
 } from '../lib/healthConnect';
 import { supabase } from '../lib/supabase';
 import { logSupabaseError } from '../lib/supabaseError';
@@ -127,7 +127,10 @@ export const useActivityStore = create<ActivityState & ActivityActions>((set, ge
 
     let usingHealthConnect = false;
     if (await isHealthConnectAvailable()) {
-      const granted = await requestHealthConnectStepPermission();
+      // Only use Health Connect if the user has ALREADY granted access (via the
+      // Health Connect app). We never trigger the in-app permission request —
+      // the native launcher isn't registered on Expo builds and crashes.
+      const granted = await hasHealthConnectStepPermission();
       if (granted) {
         usingHealthConnect = true;
         stepSource = 'health_connect';

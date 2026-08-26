@@ -343,6 +343,16 @@ export const useDailyStore = create<DailyStore>((set, get) => ({
         console.warn('Notification check failed:', notifError);
       }
 
+      // Personality layer: credit a meal reminder that led to this log, and
+      // queue the 9pm encouragement note on a fully-logged day. Dynamic
+      // import dodges the store ⇄ scheduler cycle; both are fire-and-forget.
+      import('@/lib/notificationScheduler')
+        .then((m) => {
+          m.recordMealLogAttribution();
+          m.checkAndScheduleEncouragement();
+        })
+        .catch(() => {});
+
       return { success: true };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';

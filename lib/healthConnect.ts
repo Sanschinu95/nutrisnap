@@ -59,19 +59,19 @@ export async function isHealthConnectAvailable(): Promise<boolean> {
   }
 }
 
-/** Requests read-steps permission (opens the Health Connect UI if not granted). */
-export async function requestHealthConnectStepPermission(): Promise<boolean> {
+/**
+ * Whether read-steps permission is ALREADY granted. Uses getGrantedPermissions
+ * only — never the permission-request launcher, which crashes on Expo builds
+ * (the native launcher isn't registered by the generated MainActivity:
+ * "lateinit property requestPermission has not been initialized"). Because of
+ * that, we don't request in-app; users grant via the Health Connect app, which
+ * openHealthConnectSettings() below deep-links to.
+ */
+export async function hasHealthConnectStepPermission(): Promise<boolean> {
   const HC = load();
   if (!HC) return false;
   if (!(await ensureInit(HC))) return false;
-  if (await hasStepPermission(HC)) return true;
-  try {
-    const result = await HC.requestPermission([{ accessType: 'read', recordType: 'Steps' }]);
-    return result.some((p) => (p as { recordType?: string; accessType?: string }).recordType === 'Steps'
-      && (p as { accessType?: string }).accessType === 'read');
-  } catch {
-    return false;
-  }
+  return hasStepPermission(HC);
 }
 
 /** Today's total steps from Health Connect, or null if unavailable/denied. */

@@ -1,6 +1,7 @@
 /**
- * Legal screen — Privacy Policy & Terms of Service
- * Placeholder text for pre-launch; replace with real legal copy before release.
+ * Legal screen — Privacy Policy & Terms of Service.
+ * Keep this in sync with the hosted copy at docs/privacy-policy.html (the URL
+ * submitted to the Play Console).
  */
 
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -21,27 +22,35 @@ const CONTENT: Record<LegalSection, { title: string; icon: string; sections: { h
     sections: [
       {
         heading: 'Information We Collect',
-        body: 'Nyurix collects information you provide during account creation (name, email via Google sign-in), health-related data you enter (weight, height, age, dietary goals), food scan images, and nutrition logs. We also collect anonymous usage analytics to improve the app experience.',
+        body: 'Account information you provide via Google Sign-In (name, email). Health and wellness data you enter: height, weight, age, biological sex, dietary preferences, nutrition goals, and any self-reported medical conditions. Activity data: daily steps (read from Android Health Connect only if you grant permission), sleep, and hydration. Your food logs and the photos you take when scanning meals. We also collect anonymous usage analytics and crash diagnostics to improve reliability.',
       },
       {
         heading: 'How We Use Your Data',
-        body: 'Your data is used to provide personalized nutrition tracking, generate AI-powered food analysis, calculate calorie and macro goals, and track your progress over time. We do not sell your personal data to third parties.',
+        body: 'To provide personalized nutrition tracking, analyze food photos, calculate calorie and macro targets, and show your progress. If you use the optional Friends feature, other users you connect with can see only your streak and consistency score — never your meals, calories, weight, photos, or any other data. We do not sell your personal data to anyone.',
+      },
+      {
+        heading: 'Health & Activity Data',
+        body: 'If you connect Android Health Connect, we read your daily step count only — no other health records. You can revoke this at any time in Health Connect settings. Self-reported medical conditions are used solely to tailor guidance (for example, avoiding aggressive calorie deficits) and are never used diagnostically or shared.',
       },
       {
         heading: 'Data Storage & Security',
-        body: 'Your data is stored securely on Supabase (PostgreSQL) with row-level security policies. Food scan images are stored on Cloudinary with secure upload presets. All data transmission uses HTTPS encryption.',
-      },
-      {
-        heading: 'Data Retention & Deletion',
-        body: 'You can export all your data at any time from the Profile screen. You can also permanently delete your account and all associated data. Deletion is irreversible and removes all meals, hydration logs, weight history, and profile information.',
+        body: 'Your data is stored on Supabase (PostgreSQL) protected by row-level security, so each account can access only its own data. Meal and profile photos are stored on Cloudinary. All transmission uses HTTPS. AI credentials are held server-side and never shipped in the app.',
       },
       {
         heading: 'Third-Party Services',
-        body: 'Nyurix uses the following third-party services: Google Sign-In (authentication), Google Gemini (AI food analysis), Supabase (database and auth), Cloudinary (image hosting), and Expo (app framework and notifications).',
+        body: 'Google Sign-In (authentication); Groq (AI food-photo analysis using a Meta Llama vision model — your scan photos are processed to estimate nutrition); Supabase (database, authentication, backend functions); Cloudinary (image hosting); Open Food Facts (a public food database queried by the name you type for manual entry); and Expo (app framework and notifications).',
+      },
+      {
+        heading: 'Data Retention & Deletion',
+        body: 'You can export all of your data at any time from the Profile screen. You can permanently delete your account from within the app — this irreversibly removes your login, profile, meals, hydration and weight history, activity data, and stored food photos. To request deletion by email, contact support@nyurix.app.',
+      },
+      {
+        heading: "Children's Privacy",
+        body: 'Nyurix is not directed to children under 13, and we do not knowingly collect data from them. If you believe a child has provided us data, contact us and we will delete it.',
       },
       {
         heading: 'Contact',
-        body: 'For privacy-related questions, please reach out through the Feedback section in the app or contact us at support@nyurix.app.',
+        body: 'For privacy questions or data requests, use the Feedback section in the app or email support@nyurix.app.',
       },
     ],
   },

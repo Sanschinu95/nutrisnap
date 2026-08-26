@@ -5,7 +5,7 @@
  * entrance, followed by staggered Get Started + Log In buttons.
  */
 
-import { StyleSheet, Pressable, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Animated, {
@@ -14,6 +14,7 @@ import Animated, {
   ZoomIn,
 } from 'react-native-reanimated';
 import { useAuthStore } from '@/stores/auth.store';
+import { useUserStore } from '@/stores/user.store';
 import { Spacing, BorderRadius } from '@/constants/theme';
 
 // Slightly deepened green for full-bleed hero impact
@@ -21,6 +22,14 @@ const HERO_GREEN = '#3D9B40';
 
 export default function WelcomeScreen() {
   const { session, isInitialized } = useAuthStore();
+  const profile = useUserStore((s) => s.profile);
+  const isGuest = useUserStore((s) => s.isGuest);
+
+  // A signed-in user (or a guest who already onboarded) must never see the
+  // Get Started / Log In buttons — the route guard is about to redirect them
+  // into the app, so show a quiet loading state instead.
+  const resolvingSession =
+    !isInitialized || !!session || (isGuest && profile?.onboarding_complete === true);
 
   const handleGetStarted = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -53,23 +62,28 @@ export default function WelcomeScreen() {
         </Animated.Text>
       </Animated.View>
 
-      {/* Buttons — staggered entrance after wordmark */}
-      <Animated.View
-        entering={FadeInDown.delay(900).springify().damping(18)}
-        style={styles.buttonSection}
-      >
-        <Pressable style={styles.getStartedButton} onPress={handleGetStarted}>
-          <Animated.Text style={styles.getStartedText}>
-            Get Started
-          </Animated.Text>
-        </Pressable>
+      {resolvingSession ? (
+        <View style={styles.buttonSection}>
+          <ActivityIndicator color="#FFFFFF" />
+        </View>
+      ) : (
+        <Animated.View
+          entering={FadeInDown.delay(900).springify().damping(18)}
+          style={styles.buttonSection}
+        >
+          <Pressable style={styles.getStartedButton} onPress={handleGetStarted}>
+            <Animated.Text style={styles.getStartedText}>
+              Get Started
+            </Animated.Text>
+          </Pressable>
 
-        <Pressable style={styles.loginButton} onPress={handleLogin}>
-          <Animated.Text style={styles.loginText}>
-            Log In
-          </Animated.Text>
-        </Pressable>
-      </Animated.View>
+          <Pressable style={styles.loginButton} onPress={handleLogin}>
+            <Animated.Text style={styles.loginText}>
+              Log In
+            </Animated.Text>
+          </Pressable>
+        </Animated.View>
+      )}
     </View>
   );
 }

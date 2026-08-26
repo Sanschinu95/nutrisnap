@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Image, Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { Camera, CameraView } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import * as Haptics from 'expo-haptics';
@@ -43,7 +43,8 @@ async function saveScanToGallery(uri: string): Promise<void> {
 
 export default function CameraScreen() {
   const { theme } = useTheme();
-  const [permission, requestPermission] = useCameraPermissions();
+  const [cameraPermission, setCameraPermission] = useState<Awaited<ReturnType<typeof Camera.requestCameraPermissionsAsync>> | null>(null);
+  const [permissionChecked, setPermissionChecked] = useState(false);
   const cameraRef = useRef<CameraView>(null);
   const { isAnalyzing, result, error, analyze, reset } = useGroq();
   const loadToday = useDailyStore((s) => s.loadToday);
@@ -68,6 +69,28 @@ export default function CameraScreen() {
   useEffect(() => {
     loadToday();
   }, [loadToday]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function requestNativeCameraPermission() {
+      try {
+        const nextPermission = await Camera.requestCameraPermissionsAsync();
+        if (mounted) setCameraPermission(nextPermission);
+      } catch (e) {
+        console.warn('[Camera] permission request failed:', e);
+        if (mounted) setCameraPermission(null);
+      } finally {
+        if (mounted) setPermissionChecked(true);
+      }
+    }
+
+    requestNativeCameraPermission();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // First-time scan tutorial: push the tutorial over the camera when the
   // user hasn't seen it. The session-scoped flag guards against a re-push
@@ -190,11 +213,22 @@ export default function CameraScreen() {
     router.push({ pathname: '/confirm', params: { data: JSON.stringify(manualEntry) } });
   };
 
-  if (!permission) {
+  const requestPermission = async () => {
+    try {
+      const nextPermission = await Camera.requestCameraPermissionsAsync();
+      setCameraPermission(nextPermission);
+      setPermissionChecked(true);
+    } catch (e) {
+      console.warn('[Camera] permission request failed:', e);
+      Alert.alert('Camera permission failed', 'Please enable camera access in system settings.');
+    }
+  };
+
+  if (!permissionChecked) {
     return <View style={[styles.permissionContainer, { backgroundColor: theme.background }]} />;
   }
 
-  if (!permission.granted) {
+  if (!cameraPermission?.granted) {
     return (
       <View style={[styles.permissionContainer, { backgroundColor: theme.background }]}>
         <Ionicons name="camera-outline" size={58} color={Colors.olive} />

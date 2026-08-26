@@ -38,6 +38,12 @@ interface UserState {
   streak: number;
   isLoading: boolean;
   isGuest: boolean;
+  /**
+   * True once loadProfile has resolved (found a profile, migrated a guest one,
+   * or confirmed none exists). The route guard must NOT send an authenticated
+   * user to onboarding while this is false — profile state is simply unknown.
+   */
+  profileChecked: boolean;
   error: string | null;
 }
 
@@ -126,6 +132,7 @@ export const useUserStore = create<UserStore>((set, get) => ({
   streak: 0,
   isLoading: false,
   isGuest: false,
+  profileChecked: false,
   error: null,
 
   loadProfile: async () => {
@@ -134,63 +141,84 @@ export const useUserStore = create<UserStore>((set, get) => ({
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        set({ isLoading: false, profile: null });
+        set({ isLoading: false, profile: null, profileChecked: true });
         return;
       }
+
+      // Snapshot BEFORE fetching: a completed in-memory guest profile is data
+      // the user just typed in — it must survive sign-in no matter what the
+      // server row looks like.
+      const existing = get().profile;
+      const guestProfile =
+        existing?.onboarding_complete === true &&
+        typeof existing?.id === 'string' &&
+        existing.id.startsWith('guest_')
+          ? existing
+          : null;
 
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single();
+      if (error) {
+        console.log('[FriendCode] profile load failed before friend-code read:', error);
+      }
+      const serverProfile = data && !error ? (data as Profile) : null;
 
-      if (data && !error) {
-        const profile = data as Profile;
+      // Guest → signed-in upgrade. IMPORTANT: the handle_new_user DB trigger
+      // creates an EMPTY profile row for every auth user, so "a row exists"
+      // does not mean "already onboarded". If the server row is missing OR
+      // still incomplete while we hold completed guest answers, the guest data
+      // wins and is pushed up — otherwise the empty row would clobber the
+      // answers and force re-onboarding (the bug this replaces).
+      if (guestProfile && serverProfile?.onboarding_complete !== true) {
+        const migratedProfile: Profile = {
+          ...guestProfile,
+          id: user.id,
+          updated_at: new Date().toISOString(),
+        };
+        const { data: savedMigratedProfile, error: upsertError } = await supabase
+          .from('profiles')
+          .upsert(migratedProfile, { onConflict: 'id' })
+          .select('*')
+          .single();
+        if (upsertError) {
+          console.log('[FriendCode] guest auth profile migration failed:', upsertError);
+          console.warn('Guest -> auth profile migration failed:', upsertError.message);
+        } else if (!savedMigratedProfile?.friend_code) {
+          console.log('[FriendCode] migrated profile saved without friend_code. Confirm docs/migration_friend_code_update_trigger.sql is applied.');
+        }
+        const finalMigratedProfile = (savedMigratedProfile as Profile | null) ?? migratedProfile;
         set({
-          profile,
-          ...extractGoals(profile),
+          profile: finalMigratedProfile,
+          ...extractGoals(finalMigratedProfile),
           isLoading: false,
           isGuest: false,
+          profileChecked: true,
         });
         return;
       }
 
-      // No Supabase profile row for this authenticated user yet. Before
-      // clearing local state (which would force re-onboarding), check whether
-      // the current local state is a completed guest profile — if so, port it
-      // to this new user id so their answers survive the sign-in.
-      const existing = get().profile;
-      const isCompletedGuest =
-        existing?.onboarding_complete === true &&
-        typeof existing?.id === 'string' &&
-        existing.id.startsWith('guest_');
-
-      if (isCompletedGuest && existing) {
-        const migratedProfile: Profile = {
-          ...existing,
-          id: user.id,
-          updated_at: new Date().toISOString(),
-        };
-        const { error: upsertError } = await supabase
-          .from('profiles')
-          .upsert(migratedProfile, { onConflict: 'id' });
-        if (upsertError) {
-          console.warn('Guest → auth profile migration failed:', upsertError.message);
+      if (serverProfile) {
+        if (!serverProfile.friend_code) {
+          console.log('[FriendCode] loaded profile has no friend_code. Confirm docs/migration_friend_code_update_trigger.sql has been applied.');
         }
         set({
-          profile: migratedProfile,
-          ...extractGoals(migratedProfile),
+          profile: serverProfile,
+          ...extractGoals(serverProfile),
           isLoading: false,
           isGuest: false,
+          profileChecked: true,
         });
         return;
       }
 
       // Truly new user — no local answers to preserve.
-      set({ isLoading: false, profile: null, isGuest: false });
+      set({ isLoading: false, profile: null, isGuest: false, profileChecked: true });
     } catch (error) {
       console.error('Load profile error:', error);
-      set({ isLoading: false });
+      set({ isLoading: false, profileChecked: true });
     }
   },
 
@@ -288,6 +316,8 @@ export const useUserStore = create<UserStore>((set, get) => ({
         carb_goal: goals.carbGoal,
         fat_goal: goals.fatGoal,
         hydration_goal_ml: goals.hydrationGoalMl,
+        friend_code: null,
+        is_ghost_mode: false,
         streak_count: 0,
         longest_streak: 0,
         last_logged_date: null,
@@ -298,13 +328,21 @@ export const useUserStore = create<UserStore>((set, get) => ({
 
       // Only persist to Supabase if authenticated
       if (!isGuest) {
-        const { error } = await supabase
+        const { data: savedProfile, error } = await supabase
           .from('profiles')
-          .upsert(profileData, { onConflict: 'id' });
+          .upsert(profileData, { onConflict: 'id' })
+          .select('*')
+          .single();
 
         if (error) {
+          console.log('[FriendCode] profile upsert failed; friend_code could not be confirmed:', error);
           console.warn('Supabase upsert error:', error.message);
           // Fall through -- save locally even if Supabase fails
+        } else if (!savedProfile?.friend_code) {
+          console.log('[FriendCode] profile saved without friend_code. Confirm docs/migration_social.sql is applied and trigger_assign_friend_code is present.');
+        } else {
+          profileData.friend_code = savedProfile.friend_code;
+          profileData.is_ghost_mode = savedProfile.is_ghost_mode ?? false;
         }
       }
 
@@ -314,6 +352,7 @@ export const useUserStore = create<UserStore>((set, get) => ({
         ...extractGoals(profile),
         isLoading: false,
         isGuest,
+        profileChecked: true,
       });
 
       return { success: true };
@@ -375,6 +414,7 @@ export const useUserStore = create<UserStore>((set, get) => ({
     dietStyle: null,
     friendCode: null,
     isGhostMode: false,
+    profileChecked: false,
     calorieGoal: DEFAULT_CALORIES,
     macroGoals: DEFAULT_MACROS,
     hydrationGoalMl: DEFAULT_HYDRATION_ML,
@@ -406,4 +446,3 @@ export function hasSeenScanTutorialInSession(): boolean {
 function clearScanTutorialSessionFlag(): void {
   scanTutorialSeenInSession = false;
 }
-

@@ -293,7 +293,16 @@ export default function ProfileScreen() {
           <View style={styles.settingsCard}>
             <SettingsRow title="Edit Profile" icon="person-outline" trailing="Open" />
             <SettingsRow title="Daily Calorie Goal" icon="flame-outline" trailing={`${calorieGoal} cal`} />
-            <SettingsRow title="Notifications" icon="notifications-outline" trailing="On" />
+            <SettingsRow
+              title="Notifications"
+              icon="notifications-outline"
+              trailing=""
+              showChevron
+              onPress={() => {
+                Haptics.selectionAsync();
+                router.push('/notification-settings' as any);
+              }}
+            />
             <SettingsRow
               title="Units"
               icon="scale-outline"
@@ -321,17 +330,6 @@ export default function ProfileScreen() {
               }}
             />
             <SettingsRow
-              title="Streak reminders"
-              icon="flame-outline"
-              trailing={profile.streak_reminders_enabled === false ? 'Off' : 'On'}
-              onPress={() => {
-                Haptics.selectionAsync();
-                updateProfile({
-                  streak_reminders_enabled: !(profile.streak_reminders_enabled !== false),
-                });
-              }}
-            />
-            <SettingsRow
               title="Ghost mode"
               icon="eye-off-outline"
               trailing={profile.is_ghost_mode ? 'On' : 'Off'}
@@ -340,17 +338,6 @@ export default function ProfileScreen() {
                 const next = !profile.is_ghost_mode;
                 updateProfile({ is_ghost_mode: next });
                 trackEvent(next ? 'ghost_mode_enabled' : 'ghost_mode_disabled', {});
-              }}
-            />
-            <SettingsRow
-              title="Milestone notifications"
-              icon="trophy-outline"
-              trailing={profile.milestone_notifications_enabled === false ? 'Off' : 'On'}
-              onPress={() => {
-                Haptics.selectionAsync();
-                updateProfile({
-                  milestone_notifications_enabled: !(profile.milestone_notifications_enabled !== false),
-                });
               }}
             />
             <SettingsRow

@@ -104,6 +104,16 @@ export interface Database {
         Insert: SocialWaitlistInsert;
         Update: SocialWaitlistUpdate;
       };
+      notification_preferences: {
+        Row: NotificationPreferencesRow;
+        Insert: NotificationPreferencesInsert;
+        Update: NotificationPreferencesUpdate;
+      };
+      notification_history: {
+        Row: NotificationHistoryRow;
+        Insert: NotificationHistoryInsert;
+        Update: NotificationHistoryUpdate;
+      };
     };
   };
 }
@@ -405,6 +415,56 @@ export type HabitCompletionInsert = Omit<HabitCompletionRow, 'id' | 'completed_a
 };
 
 export type HabitCompletionUpdate = Partial<HabitCompletionRow>;
+
+// Notification Preferences (docs/migration_notifications.sql)
+export interface NotificationPreferencesRow {
+  user_id: string;
+  notifications_enabled: boolean;
+  meal_reminders_enabled: boolean;
+  hydration_reminders_enabled: boolean;
+  sleep_reminders_enabled: boolean;
+  streak_reminders_enabled: boolean;
+  encouragement_enabled: boolean;
+  checkin_enabled: boolean;
+  /** Postgres TIME — 'HH:MM:SS' on read, 'HH:MM' accepted on write. */
+  breakfast_time: string;
+  lunch_time: string;
+  snack_time: string;
+  dinner_time: string;
+  hydration_interval_hours: number;
+  hydration_start_hour: number;
+  hydration_end_hour: number;
+  sleep_reminder_time: string;
+  wake_confirmation_hour: number;
+  quiet_hours_enabled: boolean;
+  quiet_hours_start: string;
+  quiet_hours_end: string;
+  updated_at: string;
+}
+
+export type NotificationPreferencesInsert = Partial<NotificationPreferencesRow> & {
+  user_id: string;
+};
+export type NotificationPreferencesUpdate = Partial<NotificationPreferencesRow>;
+
+// Notification History (dynamic-notification dedup + interaction analytics)
+export interface NotificationHistoryRow {
+  id: string;
+  user_id: string;
+  notification_type: string;
+  copy_variant_id: string | null;
+  sent_at: string;
+  interacted_at: string | null;
+  interaction_type: 'opened' | 'dismissed' | 'action_taken' | null;
+}
+
+export type NotificationHistoryInsert = Omit<NotificationHistoryRow, 'id' | 'sent_at' | 'interacted_at' | 'interaction_type'> & {
+  id?: string;
+  sent_at?: string;
+  interacted_at?: string;
+  interaction_type?: 'opened' | 'dismissed' | 'action_taken';
+};
+export type NotificationHistoryUpdate = Partial<NotificationHistoryRow>;
 
 // Social Waitlist
 export interface SocialWaitlistRow {

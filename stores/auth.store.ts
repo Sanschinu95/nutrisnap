@@ -44,6 +44,8 @@ interface AuthActions {
 
 type AuthStore = AuthState & AuthActions;
 
+let authSubscription: { unsubscribe: () => void } | null = null;
+
 export const useAuthStore = create<AuthStore>((set, get) => ({
   session: null,
   user: null,
@@ -82,7 +84,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       // Listen for auth changes — when the user changes (sign-in, sign-out,
       // or account switch) reset volatile stores and re-hydrate for the new
       // identity so AsyncStorage state never leaks across accounts.
-      supabase.auth.onAuthStateChange((event, nextSession) => {
+      authSubscription?.unsubscribe();
+      const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
         const prevUserId = get().user?.id ?? null;
         const nextUser = nextSession?.user ?? null;
         const nextUserId = nextUser?.id ?? null;
@@ -90,6 +93,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         set({
           session: nextSession ?? null,
           user: nextUser,
+          isLoading: false,
+          isInitialized: true,
         });
 
         const userChanged = prevUserId !== nextUserId;
@@ -128,6 +133,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           useDailyStore.getState().loadToday();
         }
       });
+      authSubscription = listener.subscription;
     } catch (error) {
       console.error('Auth initialization failed:', error);
       set({ isLoading: false, isInitialized: true });
@@ -153,6 +159,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         user: data.user,
         isLoading: false,
       });
+      await useUserStore.getState().loadProfile();
 
       return { success: true };
     } catch (error) {
@@ -163,6 +170,16 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   signOut: async () => {
+    // The next account (or a guest) must not inherit this user's scheduled
+    // reminders or preference cache. Dynamic import avoids a store cycle.
+    const cleanupNotifications = () =>
+      import('@/lib/notificationScheduler')
+        .then((m) => m.cancelPersonalityNotifications())
+        .catch(() => {});
+    const resetPrefsStore = () =>
+      import('./notificationPrefs.store')
+        .then((m) => m.useNotificationPrefsStore.getState().reset())
+        .catch(() => {});
     try {
       set({ isLoading: true });
       await supabase.auth.signOut();
@@ -170,6 +187,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       useDailyStore.getState().reset();
       useUserStore.getState().reset();
       useCoachStore.getState().resetAll();
+      await cleanupNotifications();
+      await resetPrefsStore();
       set({
         session: null,
         user: null,
@@ -180,6 +199,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       useDailyStore.getState().reset();
       useUserStore.getState().reset();
       useCoachStore.getState().resetAll();
+      await cleanupNotifications();
+      await resetPrefsStore();
       set({ session: null, user: null, isLoading: false });
     }
   },

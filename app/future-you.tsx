@@ -15,6 +15,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { ThemedText } from '@/components/ui/ThemedText';
 import { useUserStore } from '@/stores/user.store';
+import { getNotificationPermissionStatus } from '@/lib/notifications';
 import { BorderRadius, Colors, Spacing } from '@/constants/theme';
 
 function CountUp({ target, suffix = '', delay = 0, color = Colors.brown }: { target: number; suffix?: string; delay?: number; color?: string }) {
@@ -42,9 +43,18 @@ export default function FutureYouScreen() {
   const carbs = macroGoals.carbs ?? 0;
   const fat = macroGoals.fat ?? 0;
 
-  const handleEnter = () => {
+  const handleEnter = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    router.replace('/(tabs)/home');
+    // First entry into the app proper: if the OS permission has never been
+    // asked, show the warm notification pitch before Home. Anything else
+    // (granted, or previously denied) goes straight in — no nagging.
+    let status = 'granted';
+    try {
+      status = await getNotificationPermissionStatus();
+    } catch {
+      // Treat as already-handled; never block entry to Home.
+    }
+    router.replace((status === 'undetermined' ? '/notification-intro' : '/(tabs)/home') as any);
   };
 
   return (

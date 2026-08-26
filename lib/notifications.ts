@@ -7,6 +7,17 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { router } from 'expo-router';
 import { trackEvent } from './telemetry';
+import {
+  loadRecentVariants,
+  recentIdsFor,
+  rememberUse,
+  renderCopy,
+  saveRecentVariants,
+  selectVariant,
+  STREAK_AT_RISK_VARIANTS,
+} from './notificationCopy';
+import { isWithinQuietHours, loadNotificationPrefs } from './notificationPrefs';
+import { useUserStore } from '@/stores/user.store';
 
 // ─── Notification Channel IDs ───────────────────────────────────
 export const NOTIFICATION_CHANNELS = {
@@ -16,6 +27,8 @@ export const NOTIFICATION_CHANNELS = {
   STREAK: 'streak',
   PROGRESS: 'progress',
   COACH_WEEKLY: 'coach-weekly',
+  SLEEP_REMINDER: 'sleep-reminder',
+  CHECKIN: 'checkin',
 } as const;
 
 export const NOTIFICATION_CATEGORIES = {
@@ -38,22 +51,19 @@ interface ReminderMessages {
   nearComplete: string;
 }
 
+// Warm voice, never corporate: these legacy strings are kept aligned with the
+// personality copy in notificationCopy.ts (concern, not pressure).
 const DEFAULT_MESSAGES: ReminderMessages = {
-  meal: "Time to eat! Don't forget to log your meal.",
-  streak: "Your streak is going strong. Keep it up!",
-  goal: "Daily goal achieved. Great job! 🎉",
-  midday: "You haven't logged yet — stay on track.",
-  almostThere: "You're almost there. Stay consistent.",
-  nearComplete: "One meal away from hitting your goal.",
+  meal: 'Whatever you are eating, snap it before the first bite.',
+  streak: 'Your streak is going strong. Keep it up!',
+  goal: 'Daily goal achieved. Great job! 🎉',
+  midday: "Quiet morning? Whenever you eat, I'm here to log it.",
+  almostThere: "Good rhythm today. You're getting there.",
+  nearComplete: 'One meal away from your goal. Nicely done.',
 };
 
 /** Streak day-counts that trigger a milestone notification. */
 const STREAK_MILESTONES = [7, 14, 30, 60, 90] as const;
-
-// ─── Water Reminder Config ──────────────────────────────────────
-const WATER_REMINDER_START_HOUR = 8;
-const WATER_REMINDER_END_HOUR = 20;
-const WATER_REMINDER_INTERVAL_HOURS = 2;
 
 // ─── Initialize Notifications ───────────────────────────────────
 /**
@@ -112,6 +122,19 @@ export async function initializeNotifications(): Promise<boolean> {
       importance: Notifications.AndroidImportance.DEFAULT,
       lightColor: '#3D8BFF',
     });
+
+    await Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNELS.SLEEP_REMINDER, {
+      name: 'Sleep Reminders',
+      importance: Notifications.AndroidImportance.DEFAULT,
+      vibrationPattern: [0, 150],
+      lightColor: '#8B5CF6',
+    });
+
+    await Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNELS.CHECKIN, {
+      name: 'Check-ins & Encouragement',
+      importance: Notifications.AndroidImportance.DEFAULT,
+      lightColor: '#4CAF50',
+    });
   }
 
   await Notifications.setNotificationCategoryAsync(NOTIFICATION_CATEGORIES.HYDRATION_QUICK_ADD, [
@@ -132,111 +155,67 @@ export async function initializeNotifications(): Promise<boolean> {
     },
   ]);
 
-  // Request permissions
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-
-  return finalStatus === 'granted';
+  // NOTE: deliberately does NOT request permission. The OS prompt is shown
+  // from the notification-intro screen after onboarding, once the user has
+  // seen the app's value — never cold on first launch.
+  const { status } = await Notifications.getPermissionsAsync();
+  return status === 'granted';
 }
 
-// ─── Schedule Meal Reminder ─────────────────────────────────────
 /**
- * Schedule a daily repeating meal reminder at user-selected time.
- * @param hour - Hour (0-23)
- * @param minute - Minute (0-59)
+ * Show the OS permission prompt. Call from the notification-intro screen (or
+ * settings), never at cold start.
  */
-export async function scheduleMealReminder(
-  hour: number,
-  minute: number,
-): Promise<string> {
-  // Cancel existing meal reminders first
-  await cancelMealReminders();
-
-  const messages = DEFAULT_MESSAGES;
-
-  const id = await Notifications.scheduleNotificationAsync({
-    content: {
-      title: '🍽️ Meal Time',
-      body: messages.meal,
-      data: { type: 'meal_reminder' },
-      ...(Platform.OS === 'android' && {
-        channelId: NOTIFICATION_CHANNELS.MEAL_REMINDER,
-      }),
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DAILY,
-      hour,
-      minute,
-    },
-  });
-
-  return id;
-}
-
-// ─── Schedule Water Reminders ───────────────────────────────────
-/**
- * Schedule water reminders every 2 hours from 8am to 8pm.
- */
-export async function scheduleWaterReminders(): Promise<string[]> {
-  await cancelWaterReminders();
-
-  const ids: string[] = [];
-
-  for (
-    let hour = WATER_REMINDER_START_HOUR;
-    hour <= WATER_REMINDER_END_HOUR;
-    hour += WATER_REMINDER_INTERVAL_HOURS
-  ) {
-    const id = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: '💧 Water Reminder',
-        body: `Stay hydrated! Drink a glass of water.`,
-        categoryIdentifier: NOTIFICATION_CATEGORIES.HYDRATION_QUICK_ADD,
-        data: { type: 'water_reminder', hour },
-        ...(Platform.OS === 'android' && {
-          channelId: NOTIFICATION_CHANNELS.WATER_REMINDER,
-        }),
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DAILY,
-        hour,
-        minute: 0,
-      },
-    });
-    ids.push(id);
-  }
-
-  return ids;
+export async function requestNotificationPermission(): Promise<boolean> {
+  const { status: existing } = await Notifications.getPermissionsAsync();
+  if (existing === 'granted') return true;
+  const { status } = await Notifications.requestPermissionsAsync();
+  return status === 'granted';
 }
 
 // ─── Immediate / Event-based Notifications ──────────────────────
 
 /**
- * Local 6pm reminder: "Your N-day streak. Log something to keep it alive."
- * Cancels any previously-scheduled streak reminder before scheduling the
- * next one. Skip when streak is 0 or already logged today.
+ * Evening streak-protection reminder with warm rotating copy: "Your {n}-day
+ * streak, {name} — log anything before bed." Scheduled for 8pm; cancels any
+ * previously-scheduled one first. Skips streaks under 3 days (not worth
+ * protecting yet), quiet hours, and disabled prefs.
  */
-const STREAK_AT_RISK_ID = 'streak-at-risk-6pm';
+const STREAK_AT_RISK_ID = 'streak-at-risk-evening';
+const STREAK_AT_RISK_HOUR = 20;
 
 export async function scheduleStreakAtRiskReminder(streakCount: number): Promise<void> {
   try {
     await Notifications.cancelScheduledNotificationAsync(STREAK_AT_RISK_ID).catch(() => {});
     if (streakCount < 3) return;
+
+    const profile = useUserStore.getState().profile;
+    const prefs = await loadNotificationPrefs(profile?.id ?? null);
+    if (!prefs.notifications_enabled || !prefs.streak_reminders_enabled) return;
+    if (isWithinQuietHours(prefs, STREAK_AT_RISK_HOUR, 0)) return;
+
     const now = new Date();
     const target = new Date();
-    target.setHours(18, 0, 0, 0);
+    target.setHours(STREAK_AT_RISK_HOUR, 0, 0, 0);
     if (target.getTime() <= now.getTime()) target.setDate(target.getDate() + 1);
+
+    const context = { name: profile?.name ?? 'friend', streak: streakCount };
+    const recent = await loadRecentVariants();
+    const variant = selectVariant(
+      STREAK_AT_RISK_VARIANTS,
+      context,
+      recentIdsFor(recent, 'streak_at_risk'),
+    );
+    const copy = renderCopy(variant, context);
+    rememberUse(recent, 'streak_at_risk', variant.id);
+    await saveRecentVariants(recent);
+
     await Notifications.scheduleNotificationAsync({
       identifier: STREAK_AT_RISK_ID,
       content: {
-        title: `Your ${streakCount}-day streak`,
-        body: 'Log something to keep it alive. Even a snack counts.',
-        data: { type: 'streak_at_risk' },
+        title: copy.title,
+        body: copy.body,
+        data: { type: 'streak_at_risk', variantId: variant.id, action: 'open_scan' },
         ...(Platform.OS === 'android' && { channelId: NOTIFICATION_CHANNELS.STREAK }),
       },
       trigger: {
@@ -465,43 +444,79 @@ export async function cancelCoachWeeklyReview(): Promise<void> {
   }
 }
 
-export async function cancelMealReminders(): Promise<void> {
-  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-  for (const notif of scheduled) {
-    if (notif.content.data?.type === 'meal_reminder') {
-      await Notifications.cancelScheduledNotificationAsync(notif.identifier);
-    }
-  }
-}
-
-export async function cancelWaterReminders(): Promise<void> {
-  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-  for (const notif of scheduled) {
-    if (notif.content.data?.type === 'water_reminder') {
-      await Notifications.cancelScheduledNotificationAsync(notif.identifier);
-    }
-  }
-}
-
 export async function cancelAllNotifications(): Promise<void> {
   await Notifications.cancelAllScheduledNotificationsAsync();
 }
 
-export function registerNotificationTelemetryListeners(): () => void {
+// ─── Listeners: telemetry + tap routing + quick actions ─────────
+
+function navigate(path: string): void {
+  // Defer a tick: a tap response can arrive during cold start before the
+  // router is mounted, and an immediate push would throw.
+  setTimeout(() => {
+    try {
+      router.push(path as never);
+    } catch (e) {
+      console.warn('Notification navigation failed:', e);
+    }
+  }, 0);
+}
+
+/**
+ * Registers the app-wide notification listeners: delivery/tap telemetry,
+ * hydration quick-add actions, interaction history, and tap → deep-link
+ * routing. Call once from the root layout; returns an unsubscribe.
+ */
+export function registerNotificationListeners(): () => void {
   const received = Notifications.addNotificationReceivedListener((notification) => {
+    const data = notification.request.content.data ?? {};
     trackEvent('notification_received', {
-      type: notification.request.content.data?.type ?? 'unknown',
+      type: data.type ?? 'unknown',
+      variant_id: data.variantId ?? null,
     });
   });
+
   const opened = Notifications.addNotificationResponseReceivedListener((response) => {
-    const type = response.notification.request.content.data?.type ?? 'unknown';
+    const data = response.notification.request.content.data ?? {};
+    const type = typeof data.type === 'string' ? data.type : 'unknown';
+    const variantId = typeof data.variantId === 'string' ? data.variantId : null;
+    const actionId = response.actionIdentifier;
+
     trackEvent('notification_opened', {
       type,
-      actionIdentifier: response.actionIdentifier,
+      variant_id: variantId,
+      actionIdentifier: actionId,
     });
-    if (type === 'coach_weekly_review') {
-      router.push('/coach' as any);
+
+    // Hydration quick-add buttons log water without opening the app.
+    // (Dynamic imports here dodge the notifications ⇄ store/scheduler cycle.)
+    if (actionId === HYDRATION_ACTIONS.ADD_250 || actionId === HYDRATION_ACTIONS.ADD_500) {
+      const ml = actionId === HYDRATION_ACTIONS.ADD_250 ? 250 : 500;
+      import('@/stores/daily.store')
+        .then((m) => m.useDailyStore.getState().addWater(ml))
+        .catch((e) => console.warn('Quick-add water failed:', e));
+      import('./notificationScheduler')
+        .then((m) => m.recordNotificationInteraction(type, variantId, 'action_taken'))
+        .catch(() => {});
+      return;
     }
+
+    import('./notificationScheduler')
+      .then((m) => m.recordNotificationInteraction(type, variantId, 'opened'))
+      .catch(() => {});
+
+    // Route to the right screen. Personality notifications carry an explicit
+    // action; legacy types fall back to sensible destinations.
+    const action = typeof data.action === 'string' ? data.action : null;
+    switch (action) {
+      case 'open_scan': navigate('/(tabs)/camera'); return;
+      case 'open_hydration': navigate('/(tabs)/home?focus=hydration'); return;
+      case 'open_sleep_confirmation': navigate('/(tabs)/home?focus=sleep'); return;
+      case 'open_home': navigate('/(tabs)/home'); return;
+    }
+    if (type === 'coach_weekly_review') navigate('/coach');
+    else if (type === 'streak_at_risk' || type === 'meal_reminder') navigate('/(tabs)/camera');
+    else if (type !== 'test') navigate('/(tabs)/home');
   });
 
   return () => {
